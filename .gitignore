@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+app/node_modules/
+
+# Next.js
+app/.next/
+app/out/
+
+# TCG Project Docs & Setup (Excluded for production)
+implementation_plan.md
+elevenlabs_agent_setup.md
+elevenlabs_agent_setup_final
+*.md
+!app/**/*.md
+
+# Environment Files
+.env*.local
+app/.env*.local
+
+# Misc
+.DS_Store
+*.pem
+/tmp/
