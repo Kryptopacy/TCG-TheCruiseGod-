@@ -9,8 +9,12 @@ import GameSession from './GameSession';
 import WaveformVisualizer from './WaveformVisualizer';
 import { TCGGameStatus, Player } from '@/app/lib/gameState';
 import { SearchResult, UnifiedSearchResponse } from '@/app/types/search';
-import { captureShareCard, shareImage } from '@/app/lib/shareUtils';
-import { motion, AnimatePresence } from 'framer-motion';
+import { db } from '@/app/lib/db';
+import { useTrophyCapture } from '@/app/hooks/useTrophyCapture';
+import { useDeviceLocation } from '@/app/hooks/useDeviceLocation';
+import { ShareableMoment } from '@/app/types/sharing';
+import { AnimatePresence } from 'framer-motion';
+import ToolsPanel from './ToolsPanel';
 
 interface Message {
   id: string;
@@ -19,26 +23,36 @@ interface Message {
   timestamp: Date;
 }
 
-interface ShareableMoment {
-  id: string;
-  type: 'game_result' | 'recommendation' | 'moment';
-  title: string;
-  content: string;
-  mode: TCGMode;
-  timestamp: Date;
-}
-
 export default function ConversationManager() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [activeMode, setActiveMode] = useState<TCGMode>('locator');
   const [shareables, setShareables] = useState<ShareableMoment[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [location, setLocation] = useState<string>('');
-  const [showLocationInput, setShowLocationInput] = useState(true);
-  const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [gameStatus, setGameStatus] = useState<TCGGameStatus | null>(null);
   const [currentResults, setCurrentResults] = useState<UnifiedSearchResponse | null>(null);
+  
+  // UX Overhaul States
+  const [isStarted, setIsStarted] = useState(false);
+  const [showTranscript, setShowTranscript] = useState(false);
+  const [userName, setUserName] = useState<string>('');
+  
   const messageIdCounter = useRef(0);
+
+  useEffect(() => {
+    // Attempt to recover user name for seamless UX
+    const savedName = localStorage.getItem('tcg_userName');
+    if (savedName) setUserName(savedName);
+  }, []);
+
+  const { captureAndUpload } = useTrophyCapture();
+  const { 
+    location, 
+    setLocation, 
+    isGettingLocation, 
+    showLocationInput, 
+    setShowLocationInput, 
+    getDeviceLocation 
+  } = useDeviceLocation();
 
   const addMessage = useCallback((role: 'user' | 'agent' | 'system', content: string) => {
     const msg: Message = {
@@ -74,36 +88,49 @@ export default function ConversationManager() {
 
   // Client tool handlers
   const handleCreateShareable = useCallback((params: Record<string, unknown>) => {
+    const momentId = `share-${Date.now()}`;
     const moment: ShareableMoment = {
-      id: `share-${Date.now()}`,
+      id: momentId,
       type: (params.type as ShareableMoment['type']) || 'moment',
       title: (params.title as string) || 'TCG Moment',
       content: (params.content as string) || '',
       mode: activeMode,
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
     };
+    
+    // Optimistic UI update
     setShareables(prev => [...prev, moment]);
 
-    // Save to localStorage for Trophy Room
-    try {
-      const existing = JSON.parse(localStorage.getItem('tcg-trophies') || '[]');
-      existing.push(moment);
-      localStorage.setItem('tcg-trophies', JSON.stringify(existing));
-    } catch (e) {
-      console.error('Failed to save trophy:', e);
-    }
+    // Background process for capture & save
+    (async () => {
+      const imageUrl = await captureAndUpload(momentId);
+      await db.saveTrophy({ ...moment, image_url: imageUrl || null });
+    })();
 
     return 'Moment saved to your Trophy Room!';
-  }, [activeMode]);
+  }, [activeMode, captureAndUpload]);
 
   const handleSwitchMode = useCallback((params: Record<string, unknown>) => {
     const mode = params.mode as TCGMode;
-    if (['locator', 'plug', 'game-master'].includes(mode)) {
+    if (['locator', 'plug', 'game-master', 'tools'].includes(mode)) {
       setActiveMode(mode);
       if (mode !== 'game-master') setGameStatus(null);
       return `Mode switched to ${mode}`;
     }
     return 'Failed: Invalid mode';
+  }, []);
+
+  const [activeToolId, setActiveToolId] = useState<string | undefined>(undefined);
+
+  const handleOpenTool = useCallback((params: Record<string, unknown>) => {
+    const tool = params.tool as string;
+    const validTools = ['coin', 'dice', 'bottle', 'randomizer', 'timer'];
+    if (validTools.includes(tool)) {
+      setActiveMode('tools');
+      setActiveToolId(tool);
+      return `Opening ${tool} tool`;
+    }
+    return 'Failed: Unknown tool';
   }, []);
 
   const handleUpdateGameState = useCallback((params: Record<string, unknown>) => {
@@ -152,15 +179,26 @@ export default function ConversationManager() {
         clientTools: {
           createShareableMoment: handleCreateShareable,
           switchMode: handleSwitchMode,
+          openTool: handleOpenTool,
           updateGameState: handleUpdateGameState,
           displayResults: handleDisplayResults,
         },
         overrides: {
           agent: {
             prompt: {
-              prompt: location
-                ? `The user's current location is: ${location}. Use this context when searching for places, services, or local recommendations. Current mode: ${activeMode}.`
-                : `The user has not shared their location yet. If they ask for location-based recommendations, ask them where they are. Current mode: ${activeMode}.`,
+              prompt: `
+              ${userName 
+                ? `The user's name is ${userName}. Greet them joyfully by name! ` 
+                : `You do not know the user's name yet. Warmly ask for their name in your very first message so you can personalize the conversation! If they tell you, playfully celebrate their name! `}
+              
+              ${location 
+                ? `The user's current location is: ${location}. Use this context when searching for places.` 
+                : `The user has not shared their location. If they ask for location-specific things, ask where they are.`}
+              
+              Current mode: ${activeMode}.
+              
+              VIBE CHECK: Be extremely fun, energetic, and embody urban street-smart afrofuturism. Use slang naturally, do NOT be robotic. Keep it punchy!
+              `,
             },
           },
         },
@@ -173,7 +211,7 @@ export default function ConversationManager() {
         setErrorMessage('Could not connect. Check your internet and try again.');
       }
     }
-  }, [conversation, handleCreateShareable, handleSwitchMode, location, activeMode]);
+  }, [conversation, handleCreateShareable, handleSwitchMode, handleOpenTool, location, activeMode]);
 
   const stopConversation = useCallback(async () => {
     await conversation.endSession();
@@ -195,44 +233,12 @@ export default function ConversationManager() {
   }, [addMessage]);
 
   // Auto-detect location
-  const getDeviceLocation = useCallback(() => {
-    if (!navigator.geolocation) {
-      setErrorMessage('Geolocation not available on this device.');
-      return;
-    }
-    setIsGettingLocation(true);
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        try {
-          const { latitude, longitude } = position.coords;
-          // Reverse geocode using Google Maps
-          const response = await fetch(
-            `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}`
-          );
-          const data = await response.json();
-          if (data.results?.[0]) {
-            const addr = data.results[0].formatted_address;
-            setLocation(addr);
-            setShowLocationInput(false);
-            addMessage('system', `📍 Location set: ${addr}`);
-          } else {
-            setLocation(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
-            setShowLocationInput(false);
-          }
-        } catch {
-          setLocation(`Lat/Lng detected`);
-          setShowLocationInput(false);
-        }
-        setIsGettingLocation(false);
-      },
-      (error) => {
-        console.error('Geolocation error:', error);
-        setErrorMessage('Could not get location. You can type it manually below.');
-        setIsGettingLocation(false);
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
+  const handleGetLocation = useCallback(() => {
+    getDeviceLocation(
+      (msg) => addMessage('system', msg),
+      (err) => setErrorMessage(err)
     );
-  }, [addMessage]);
+  }, [getDeviceLocation, addMessage]);
 
   // Derive button status
   const getButtonStatus = (): 'idle' | 'connecting' | 'listening' | 'speaking' | 'processing' => {
@@ -245,180 +251,155 @@ export default function ConversationManager() {
   };
 
   return (
-    <div className="page-container" style={{ height: '100dvh' }}>
-      {/* Header */}
-      <header style={{
-        padding: '16px 20px 8px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '10px',
-      }}>
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}>
-          <div>
-            <h1 className="gradient-text" style={{
-              fontSize: '1.5rem',
-              fontWeight: 800,
-              letterSpacing: '-0.02em',
-            }}>
-              TCG
-            </h1>
-            <p style={{
-              fontSize: '0.7rem',
-              color: 'var(--text-muted)',
-              fontFamily: 'var(--font-display)',
-              fontWeight: 500,
-              textTransform: 'uppercase',
-              letterSpacing: '0.1em',
-            }}>
-              The Cruise God
-            </p>
+    <div className="page-container">
+      {/* 1. Radical Multi-Layer Background */}
+      <div className="radical-bg" />
+
+      {/* 2. Distinct White Header Layer: Logo and Location */}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20, background: '#ffffff', border: '1px solid rgba(0,0,0,0.08)', padding: 'max(16px, env(safe-area-inset-top)) 20px 16px', boxShadow: '0 4px 24px rgba(0,0,0,0.25)', borderRadius: '24px', margin: '8px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
+          {/* Logo */}
+          <div style={{ width: 'min(140px, 30vw)', flexShrink: 0 }}>
+            <img src="/TCG.png" alt="TCG Logo" style={{ width: '100%', height: 'auto', filter: 'drop-shadow(0 2px 8px rgba(0, 0, 0, 0.15))' }} />
           </div>
-
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            {shareables.length > 0 && (
-              <a
-                href="/trophy-room"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  padding: '6px 12px',
-                  borderRadius: 'var(--radius-full)',
-                  background: 'var(--bg-glass)',
-                  border: '1px solid var(--border-subtle)',
-                  fontSize: '0.75rem',
-                  fontFamily: 'var(--font-display)',
-                  color: 'var(--accent-gold)',
-                }}
-              >
-                🏆 {shareables.length}
-              </a>
-            )}
-
-            {location && (
+          
+          {/* Location Wrapper */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', zIndex: 30 }}>
+            {showLocationInput ? (
+              <div style={{ background: '#fffbe6', padding: '8px 12px', display: 'flex', gap: '8px', alignItems: 'center', width: '100%', maxWidth: '400px', animation: 'slide-down-toast 0.2s', borderRadius: '16px', border: '2px solid #FFE600', boxShadow: '0 4px 12px rgba(255,230,0,0.15)' }}>
+                <textarea
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="Edit full address..."
+                  style={{ flex: 1, background: 'transparent', border: 'none', color: '#000', fontSize: '0.85rem', outline: 'none', minHeight: '40px', resize: 'none', fontFamily: 'inherit', padding: '4px 0' }}
+                  rows={2}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey && location.trim()) {
+                      e.preventDefault();
+                      setShowLocationInput(false);
+                      addMessage('system', `📍 Location set: ${location}`);
+                    }
+                  }}
+                  autoFocus
+                />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <button onClick={handleGetLocation} disabled={isGettingLocation} style={{ background: '#FFE600', border: '2px solid #d4b800', color: '#000', padding: '6px 12px', borderRadius: '8px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 800 }}>{isGettingLocation ? '...' : 'Auto'}</button>
+                  {location.trim() && <button onClick={() => setShowLocationInput(false)} style={{ background: 'var(--accent-green)', border: 'none', color: '#000', padding: '6px 12px', borderRadius: '8px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 900 }}>OK</button>}
+                </div>
+              </div>
+            ) : (
               <button
                 onClick={() => setShowLocationInput(true)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  padding: '6px 12px',
-                  borderRadius: 'var(--radius-full)',
-                  background: 'var(--bg-glass)',
-                  border: '1px solid var(--border-subtle)',
-                  fontSize: '0.7rem',
-                  color: 'var(--text-secondary)',
-                  cursor: 'pointer',
-                  fontFamily: 'var(--font-body)',
-                  maxWidth: '150px',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
+                style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: 'var(--radius-full)', border: '2px solid #FFE600', background: '#fffbe6', color: '#8a6000', fontSize: '0.75rem', maxWidth: '100%', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', fontWeight: 700, boxShadow: '0 2px 8px rgba(255,230,0,0.2)' }}
               >
-                📍 {location}
+                📍 {location || "Set Your Location"}
               </button>
             )}
           </div>
         </div>
+      </div>
 
-        {/* Location input */}
-        {showLocationInput && (
-          <div className="glass-card" style={{
-            padding: '12px 16px',
-            display: 'flex',
-            gap: '8px',
-            alignItems: 'center',
-            animation: 'slide-up 0.3s ease-out',
-          }}>
-            <input
-              type="text"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="Where are you? (e.g. Downtown Chicago)"
-              className="chat-input"
-              style={{ flex: 1, padding: '10px 16px', fontSize: '0.85rem' }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && location.trim()) {
-                  setShowLocationInput(false);
-                  addMessage('system', `📍 Location set: ${location}`);
-                }
-              }}
-            />
-            <button
-              onClick={getDeviceLocation}
-              disabled={isGettingLocation}
-              style={{
-                padding: '10px',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--border-accent)',
-                background: 'rgba(0, 229, 255, 0.1)',
-                color: 'var(--accent-cyan)',
-                cursor: 'pointer',
-                fontSize: '0.8rem',
-                whiteSpace: 'nowrap',
-              }}
-              aria-label="Use device location"
-            >
-              {isGettingLocation ? '...' : '📍 Auto'}
-            </button>
-            {location.trim() && (
-              <button
-                onClick={() => {
-                  setShowLocationInput(false);
-                  addMessage('system', `📍 Location set: ${location}`);
-                }}
-                className="send-btn"
-                style={{ width: '36px', height: '36px', fontSize: '0.8rem' }}
-              >
-                ✓
-              </button>
-            )}
-          </div>
-        )}
+      {/* Tools Panel Overlay (shown when Tools mode is active) */}
+      {activeMode === 'tools' && (
+        <ToolsPanel activeTool={activeToolId as any} />
+      )}
 
-        {/* Mode selector */}
-        <ModeSelector activeMode={activeMode} onModeChange={setActiveMode} />
-      </header>
+      {/* Floating Modes (Pushed below header) */}
+      <div style={{ position: 'absolute', top: '160px', left: 0, right: 0, zIndex: 15, display: 'flex', justifyContent: 'center' }}>
+        <div className="glass-overlay" style={{ padding: '8px', borderRadius: 'var(--radius-full)' }}>
+          <ModeSelector activeMode={activeMode} onModeChange={setActiveMode} />
+        </div>
+      </div>
 
-      {/* Error banner */}
+      {/* 3. Error Toasts */}
       {errorMessage && (
-        <div style={{
-          margin: '0 16px',
-          padding: '10px 16px',
-          borderRadius: 'var(--radius-md)',
-          background: 'rgba(255, 82, 82, 0.1)',
-          border: '1px solid rgba(255, 82, 82, 0.3)',
-          color: 'var(--accent-red)',
-          fontSize: '0.8rem',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          animation: 'slide-up 0.3s ease-out',
-        }}>
-          <span>{errorMessage}</span>
-          <button
+        <div className="glass-toast">
+          <span>⚠️ {errorMessage}</span>
+          <button 
             onClick={() => setErrorMessage(null)}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--accent-red)',
-              cursor: 'pointer',
-              padding: '4px',
-              fontSize: '1rem',
-            }}
+            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', opacity: 0.6, padding: '4px' }}
           >
             ✕
           </button>
         </div>
       )}
 
-      {/* Chat transcript / Results */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
+      {/* 4. The Aura (Waveform behind character) */}
+      <div style={{ position: 'absolute', bottom: '10%', left: '50%', transform: 'translateX(-50%)', width: '100vw', height: '40vh', zIndex: 1, pointerEvents: 'none', opacity: 0.8 }}>
+        <WaveformVisualizer 
+          isSpeaking={conversation.isSpeaking} 
+          isListening={conversation.status === 'connected' && !conversation.isSpeaking}
+          color={activeMode === 'locator' ? 'var(--accent-green)' : activeMode === 'plug' ? 'var(--accent-gold)' : 'var(--accent-red)'}
+        />
+      </div>
+
+      {/* 5. Majestic Anchored Character Avatar */}
+      <div 
+        style={{ 
+          position: 'absolute', 
+          bottom: '-5vh', // Anchor him slightly below the screen edge to look rooted
+          left: '50%', 
+          transform: `translateX(-50%) ${conversation.isSpeaking ? 'scale(1.05)' : 'scale(1)'}`, 
+          zIndex: 5, 
+          width: '120vw', 
+          maxWidth: '500px',
+          cursor: 'pointer',
+          transition: 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+          animation: conversation.isSpeaking ? 'speaking-bounce 1s infinite ease-in-out' : 'idle-float 5s infinite ease-in-out',
+          filter: conversation.isSpeaking 
+                  ? 'drop-shadow(0 0 40px rgba(255, 230, 0, 0.4))' 
+                  : (conversation.status === 'connected' ? 'drop-shadow(0 0 20px rgba(255, 255, 255, 0.15))' : 'drop-shadow(0 -10px 30px rgba(0,0,0,0.8))')
+        }}
+        onClick={toggleConversation}
+        onPointerDown={(e) => e.currentTarget.style.transform = `translateX(-50%) scale(0.95)`}
+        onPointerUp={(e) => e.currentTarget.style.transform = `translateX(-50%) scale(1)`}
+        onPointerLeave={(e) => e.currentTarget.style.transform = `translateX(-50%) scale(1)`}
+        title={conversation.status === 'connected' ? "Tap to Disconnect" : "Tap to Connect"}
+      >
+        <img 
+          src="/TCG character.png" 
+          alt="The Cruise God"
+          style={{ width: '100%', height: 'auto', display: 'block', pointerEvents: 'none' }} 
+        />
+      </div>
+
+      {/* Floating Action Button for Chat Mode */
+      isStarted && (
+        <button
+          onClick={() => setShowTranscript(prev => !prev)}
+          style={{
+            position: 'absolute',
+            bottom: '24px',
+            left: '24px', // Moved to the left to avoid overlapping character on the right
+            width: '64px',
+            height: '64px',
+            borderRadius: '50%',
+            background: 'var(--accent-gold)',
+            border: 'none',
+            color: '#000',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            boxShadow: '0 8px 20px rgba(255, 230, 0, 0.4)',
+            zIndex: 60,
+            transition: 'transform 0.1s ease-in-out'
+          }}
+          aria-label="Toggle Text Chat"
+          onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.9)'}
+          onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
+          onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+        >
+          {showTranscript ? (
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          ) : (
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+          )}
+        </button>
+      )}
+
+      {/* Transcript Drawer Overlay */}
+      <div className={`transcript-drawer ${showTranscript ? 'open' : ''}`}>
         <AnimatePresence mode="wait">
           {activeMode === 'game-master' && gameStatus && (
             <GameSession 
@@ -439,27 +420,35 @@ export default function ConversationManager() {
         </AnimatePresence>
       </div>
 
-      {/* Voice button dock */}
-      <div style={{
-        padding: '12px 20px 24px',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: '12px',
-        background: 'linear-gradient(to top, var(--bg-primary) 0%, transparent 100%)',
-        position: 'relative',
-      }}>
-        <WaveformVisualizer 
-          isSpeaking={conversation.isSpeaking} 
-          isListening={conversation.status === 'connected' && !conversation.isSpeaking}
-          color={activeMode === 'locator' ? 'var(--accent-cyan)' : activeMode === 'plug' ? 'var(--accent-gold)' : 'var(--accent-magenta)'}
-        />
-        
-        <VoiceButton
-          status={getButtonStatus()}
-          onClick={toggleConversation}
-        />
-      </div>
+      {/* 8. Splash Screen Overlay */}
+      {!isStarted && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 100,
+          background: 'rgba(9, 9, 11, 0.6)', // Increased opacity slightly
+          backdropFilter: 'blur(10px)', // Drastically reduced blur radius for cheap rendering
+          WebkitBackdropFilter: 'blur(10px)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '24px',
+          textAlign: 'center'
+        }}>
+          <img src="/TCG.png" alt="TCG Character" style={{ width: '320px', height: 'auto', marginBottom: '48px', filter: 'drop-shadow(0 15px 30px rgba(0,0,0,0.6))', animation: 'idle-float 4s infinite ease-in-out', willChange: 'transform' }} />
+          <button 
+            className="chunky-button"
+            onClick={() => {
+              setIsStarted(true);
+              startConversation();
+            }}
+            style={{ transform: 'translateZ(0)' }} // GPU acceleration
+          >
+            TAP TO ENTER
+          </button>
+        </div>
+      )}
     </div>
   );
 }

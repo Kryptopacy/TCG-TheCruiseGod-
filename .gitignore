@@ -9,7 +9,8 @@ app/out/
 # TCG Project Docs & Setup (Excluded for production)
 implementation_plan.md
 elevenlabs_agent_setup.md
-elevenlabs_agent_setup_final
+elevenlabs_agent_setup_final.md
+implementation_plan_production.md
 *.md
 !app/**/*.md
 

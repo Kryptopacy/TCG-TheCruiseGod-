@@ -1,10 +1,13 @@
 import { TCGMode } from '@/app/components/ModeSelector';
+import { Database } from './database.types';
 
-export interface ShareableMoment {
-  id: string;
+type TrophyRow = Database['public']['Tables']['trophies']['Row'];
+
+export interface ShareableMoment extends Omit<TrophyRow, 'timestamp' | 'mode' | 'type' | 'user_id' | 'created_at' | 'image_url'> {
   type: 'game_result' | 'recommendation' | 'moment';
-  title: string;
-  content: string;
   mode: TCGMode;
-  timestamp: Date;
+  timestamp: Date | string;
+  user_id?: string;
+  created_at?: string;
+  image_url?: string | null;
 }

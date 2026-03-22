@@ -81,19 +81,24 @@ function formatResults(type: SearchType, webResults: Array<Record<string, unknow
   });
 }
 
-// Simple in-memory cache for production-ready optimization
-const cache = new Map<string, { data: UnifiedSearchResponse; timestamp: number }>();
-const CACHE_TTL = 1000 * 60 * 15; // 15 minutes
+import { Redis } from '@upstash/redis'
+
+const CACHE_TTL_SECONDS = 60 * 15; // 15 minutes
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+})
 
 export async function performFirecrawlSearch(req: SearchRequest): Promise<UnifiedSearchResponse> {
   const { query, type = 'locations' } = req;
-  const cacheKey = `${type}:${query}:${req.location || ''}`;
+  const cacheKey = `tcg:${type}:${query}:${req.location || ''}`;
 
   // Check cache
-  const cached = cache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    console.log(`[TCG Search] Cache hit for: ${cacheKey}`);
-    return { ...cached.data, from_cache: true };
+  const cached = await redis.get<UnifiedSearchResponse>(cacheKey);
+  if (cached) {
+    console.log(`[TCG Search] Upstash Cache hit for: ${cacheKey}`);
+    return { ...cached, from_cache: true };
   }
 
   const apiKey = process.env.FIRECRAWL_API_KEY;
@@ -162,8 +167,8 @@ export async function performFirecrawlSearch(req: SearchRequest): Promise<Unifie
       query: searchQuery,
     };
 
-    // Store in cache
-    cache.set(cacheKey, { data: finalResponse, timestamp: Date.now() });
+    // Store in Upstash Redis cache (15 min TTL)
+    await redis.setex(cacheKey, CACHE_TTL_SECONDS, finalResponse);
 
     return finalResponse;
   } catch (error) {

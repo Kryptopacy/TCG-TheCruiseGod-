@@ -1,27 +1,23 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-
-interface ShareableMoment {
-  id: string;
-  type: 'game_result' | 'recommendation' | 'moment';
-  title: string;
-  content: string;
-  mode: string;
-  timestamp: string;
-}
+import { db } from '@/app/lib/db';
+import { ShareableMoment } from '@/app/types/sharing';
 
 export default function TrophyRoom() {
   const [trophies, setTrophies] = useState<ShareableMoment[]>([]);
   const [shareStatus, setShareStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem('tcg-trophies') || '[]');
-      setTrophies(stored.reverse()); // Newest first
-    } catch {
-      setTrophies([]);
+    async function loadTrophies() {
+      try {
+        const fetched = await db.getTrophies();
+        setTrophies(fetched);
+      } catch {
+        setTrophies([]);
+      }
     }
+    loadTrophies();
   }, []);
 
   const handleShare = async (trophy: ShareableMoment) => {
@@ -50,10 +46,13 @@ export default function TrophyRoom() {
     setTimeout(() => setShareStatus(null), 3000);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
+    // Optimistic UI update
     const updated = trophies.filter(t => t.id !== id);
     setTrophies(updated);
-    localStorage.setItem('tcg-trophies', JSON.stringify(updated));
+    
+    // Background DB delete
+    await db.deleteTrophy(id);
   };
 
   const getModeColor = (mode: string) => {
@@ -214,10 +213,23 @@ export default function TrophyRoom() {
                 fontSize: '0.85rem',
                 color: 'var(--text-secondary)',
                 lineHeight: 1.5,
-                marginBottom: '16px',
+                marginBottom: trophy.image_url ? '12px' : '16px',
               }}>
                 {trophy.content}
               </p>
+
+              {/* Attached Screenshot */}
+              {trophy.image_url && (
+                <div style={{
+                  marginBottom: '16px',
+                  borderRadius: 'var(--radius-md)',
+                  overflow: 'hidden',
+                  border: '1px solid rgba(255,255,255,0.1)'
+                }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={trophy.image_url} alt="Session Moment" style={{ width: '100%', display: 'block' }} />
+                </div>
+              )}
 
               {/* Actions */}
               <div style={{

@@ -2,7 +2,7 @@
 
 import React from 'react';
 
-export type TCGMode = 'locator' | 'plug' | 'game-master';
+export type TCGMode = 'locator' | 'plug' | 'game-master' | 'tools';
 
 interface ModeSelectorProps {
   activeMode: TCGMode;
@@ -13,14 +13,15 @@ const modes: { id: TCGMode; label: string; icon: string; desc: string }[] = [
   { id: 'locator', label: 'Locator', icon: '📍', desc: 'Find spots & vibes' },
   { id: 'plug', label: 'The Plug', icon: '🔌', desc: 'Find services' },
   { id: 'game-master', label: 'Game Master', icon: '🎮', desc: 'Run the fun' },
+  { id: 'tools', label: 'Tools', icon: '🎲', desc: 'Party tools' },
 ];
 
 export default function ModeSelector({ activeMode, onModeChange }: ModeSelectorProps) {
   return (
     <div style={{
       display: 'flex',
-      gap: '8px',
-      padding: '8px',
+      gap: '12px',
+      padding: '16px 8px',
       justifyContent: 'center',
       flexWrap: 'wrap',
     }}>
@@ -33,17 +34,20 @@ export default function ModeSelector({ activeMode, onModeChange }: ModeSelectorP
             className={`mode-badge ${mode.id}`}
             style={{
               cursor: 'pointer',
-              padding: '8px 16px',
+              padding: '10px 20px',
+              borderRadius: '30px',
               background: isActive
-                ? mode.id === 'locator' ? 'rgba(0, 229, 255, 0.2)'
-                  : mode.id === 'plug' ? 'rgba(255, 215, 64, 0.2)'
-                    : 'rgba(224, 64, 251, 0.2)'
-                : 'var(--bg-card)',
+                ? mode.id === 'locator' ? 'rgba(0, 240, 255, 0.15)'
+                  : mode.id === 'plug' ? 'rgba(255, 215, 0, 0.15)'
+                  : mode.id === 'tools' ? 'rgba(255, 140, 0, 0.15)'
+                    : 'rgba(248, 0, 177, 0.15)'
+                : 'rgba(255, 255, 255, 0.03)',
               borderColor: isActive
-                ? mode.id === 'locator' ? 'rgba(0, 229, 255, 0.5)'
-                  : mode.id === 'plug' ? 'rgba(255, 215, 64, 0.5)'
-                    : 'rgba(224, 64, 251, 0.5)'
-                : 'var(--border-subtle)',
+                ? mode.id === 'locator' ? 'rgba(0, 240, 255, 0.6)'
+                  : mode.id === 'plug' ? 'rgba(255, 215, 0, 0.6)'
+                  : mode.id === 'tools' ? 'rgba(255, 140, 0, 0.6)'
+                    : 'rgba(248, 0, 177, 0.6)'
+                : 'rgba(255, 255, 255, 0.08)',
               transition: 'all 0.2s',
               transform: isActive ? 'scale(1.05)' : 'scale(1)',
             }}

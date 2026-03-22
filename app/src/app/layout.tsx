@@ -1,5 +1,14 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import AuthButton from "./components/AuthButton";
+import { cookies } from 'next/headers';
+
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
 
 export const metadata: Metadata = {
   title: "TCG — The Cruise God | Voice-First AI Concierge",
@@ -20,18 +29,34 @@ export const metadata: Metadata = {
     description: "Your charismatic AI concierge and game master.",
     creator: "@TCG_CruiseGod",
   },
-  viewport: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0",
   robots: "index, follow",
+  manifest: "/manifest.json",
+  icons: {
+    icon: [
+      { url: "/TCG.png", type: "image/png" }
+    ],
+    shortcut: [
+      { url: "/TCG.png", type: "image/png" }
+    ],
+    apple: "/TCG.png",
+  },
 };
 
-export default function RootLayout({
+export const themeColor = "#09090b";
+
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const cookieStore = await cookies();
+  // Default to Demo Mode (hidden auth) unless explicitly set to 'false' via the Admin console
+  const isDemoMode = cookieStore.get('tcg_demo_mode')?.value !== 'false';
+
   return (
     <html lang="en">
       <body>
+        {!isDemoMode && <AuthButton />}
         {children}
       </body>
     </html>
