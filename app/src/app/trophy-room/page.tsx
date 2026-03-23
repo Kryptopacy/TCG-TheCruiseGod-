@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { db } from '@/app/lib/db';
-import { ShareableMoment } from '@/app/types/sharing';
+import { Memory } from '@/app/types/sharing';
 
 export default function TrophyRoom() {
-  const [trophies, setTrophies] = useState<ShareableMoment[]>([]);
+  const [trophies, setTrophies] = useState<Memory[]>([]);
   const [shareStatus, setShareStatus] = useState<string | null>(null);
 
   useEffect(() => {
@@ -20,7 +20,7 @@ export default function TrophyRoom() {
     loadTrophies();
   }, []);
 
-  const handleShare = async (trophy: ShareableMoment) => {
+  const handleShare = async (trophy: Memory) => {
     const shareText = `🏆 ${trophy.title}\n\n${trophy.content}\n\n🎤 Powered by TCG — The Cruise God\n#ElevenHacks @firecrawl @elevenlabs`;
 
     if (navigator.share) {
@@ -105,7 +105,7 @@ export default function TrophyRoom() {
             color: 'var(--text-secondary)',
             marginTop: '4px',
           }}>
-            Your shareable moments from TCG sessions
+            Your captured memories from TCG sessions
           </p>
         </div>
       </div>

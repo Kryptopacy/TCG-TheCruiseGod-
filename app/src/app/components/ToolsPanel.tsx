@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 // ─── Types & Helpers ────────────────────────────────────────────────────────
 
-type Tool = 'home' | 'coin' | 'dice' | 'bottle' | 'randomizer' | 'timer';
+type Tool = 'home' | 'coin' | 'dice' | 'bottle' | 'randomizer' | 'timer' | 'bill' | 'truth' | 'scoreboard';
 
 function randomInt(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -112,8 +112,14 @@ function DiceRoll() {
 }
 
 // 3. Spin the Bottle
-function SpinBottle() {
-  const [players, setPlayers] = useState<string[]>(['Alex', 'Blake', 'Casey', 'Dana']);
+function SpinBottle({ activeGuests = [] }: { activeGuests?: string[] }) {
+  const defaultPlayers = activeGuests.length >= 2 ? activeGuests : ['Alex', 'Blake', 'Casey', 'Dana'];
+  const [players, setPlayers] = useState<string[]>(defaultPlayers);
+
+  // Sync when guests join the room after mount
+  useEffect(() => {
+    if (activeGuests.length >= 2) setPlayers(activeGuests);
+  }, [activeGuests.join(',')]);
   const [newPlayer, setNewPlayer] = useState('');
   const [spinning, setSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
@@ -169,6 +175,14 @@ function SpinBottle() {
         </svg>
       </div>
       {selected && <p style={{ color: '#FFE600', fontWeight: 900, fontSize: '1.5rem', marginBottom: '12px', animation: 'slide-down-toast 0.4s' }}>👉 {selected}!</p>}
+      {activeGuests.length >= 2 && (
+        <button
+          onClick={() => setPlayers(activeGuests)}
+          style={{ ...actionBtn, background: 'rgba(0,229,255,0.15)', color: 'var(--accent-cyan, #00e5ff)', border: '1px solid rgba(0,229,255,0.4)', boxShadow: 'none', padding: '10px 20px', fontSize: '0.8rem', marginBottom: '12px' }}
+        >
+          👥 RELOAD FROM ROOM ({activeGuests.length})
+        </button>
+      )}
       <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '12px', width: '100%', maxWidth: '300px' }}>
         <input value={newPlayer} onChange={e => setNewPlayer(e.target.value)} onKeyDown={e => e.key === 'Enter' && addPlayer()} placeholder="Add player…" style={{ ...inlineInput, flex: 1 }} />
         <button onClick={addPlayer} style={counterBtn}>+</button>
@@ -187,7 +201,7 @@ function SpinBottle() {
 }
 
 // 4. Randomizer
-function Randomizer() {
+function Randomizer({ activeGuests = [], groups = {} }: { activeGuests?: string[]; groups?: Record<string, string[]> }) {
   const [items, setItems] = useState<string[]>(['Pizza', 'Tacos', 'Sushi', 'Burgers']);
   const [newItem, setNewItem] = useState('');
   const [result, setResult] = useState<string | null>(null);
@@ -220,6 +234,26 @@ function Randomizer() {
       <div style={{ background: result ? 'rgba(255,230,0,0.12)' : 'rgba(255,255,255,0.05)', border: `2px solid ${result && !picking ? '#FFE600' : 'rgba(255,255,255,0.1)'}`, borderRadius: '16px', padding: '24px', minHeight: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px', width: '100%', maxWidth: '300px', transition: 'all 0.2s' }}>
         <p style={{ color: result ? '#FFE600' : 'rgba(255,255,255,0.4)', fontSize: '1.6rem', fontWeight: 900, margin: 0 }}>{result ?? 'Add choices below'}</p>
       </div>
+      {(activeGuests.length > 0 || Object.keys(groups).length > 0) && (
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap', justifyContent: 'center', width: '100%', maxWidth: '300px' }}>
+          {activeGuests.length > 0 && (
+            <button
+              onClick={() => setItems([...activeGuests])}
+              style={{ flex: 1, background: 'rgba(0,229,255,0.12)', color: 'var(--accent-cyan, #00e5ff)', border: '1px solid rgba(0,229,255,0.3)', borderRadius: '12px', padding: '8px 12px', fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer' }}
+            >
+              👥 Load Cruisers
+            </button>
+          )}
+          {Object.keys(groups).length > 0 && (
+            <button
+              onClick={() => setItems(Object.keys(groups))}
+              style={{ flex: 1, background: 'rgba(224,64,251,0.12)', color: '#e040fb', border: '1px solid rgba(224,64,251,0.3)', borderRadius: '12px', padding: '8px 12px', fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer' }}
+            >
+              🎲 Load Groups
+            </button>
+          )}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', width: '100%', maxWidth: '300px' }}>
         <input value={newItem} onChange={e => setNewItem(e.target.value)} onKeyDown={e => e.key === 'Enter' && addItem()} placeholder="Add an option…" style={{ ...inlineInput, flex: 1 }} />
         <button onClick={addItem} style={counterBtn}>+</button>
@@ -330,6 +364,191 @@ function TimerTool() {
   );
 }
 
+// 6. Bill Splitter
+function BillSplitter() {
+  const [total, setTotal] = useState('');
+  const [tip, setTip] = useState(15);
+  const [people, setPeople] = useState(2);
+
+  const bill = parseFloat(total) || 0;
+  const tipAmt = bill * (tip / 100);
+  const grandTotal = bill + tipAmt;
+  const perPerson = people > 0 ? grandTotal / people : 0;
+
+  return (
+    <div style={toolContainer}>
+      <h2 style={toolTitle}>💰 Bill Splitter</h2>
+      <div style={{ width: '100%', maxWidth: '320px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: '16px', padding: '16px' }}>
+          <label style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.75rem', display: 'block', marginBottom: '8px' }}>TOTAL BILL</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ color: '#FFE600', fontWeight: 900, fontSize: '1.4rem' }}>$</span>
+            <input type="number" value={total} onChange={e => setTotal(e.target.value)} placeholder="0.00" inputMode="decimal" style={{ ...inlineInput, flex: 1, fontSize: '1.6rem', fontWeight: 900, background: 'transparent', border: 'none', padding: '0' }} />
+          </div>
+        </div>
+        <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: '16px', padding: '16px' }}>
+          <label style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.75rem', display: 'block', marginBottom: '12px' }}>TIP: {tip}%</label>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {[0, 10, 15, 18, 20, 25].map(t => (
+              <button key={t} onClick={() => setTip(t)} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', background: tip === t ? '#FFE600' : 'rgba(255,255,255,0.1)', color: tip === t ? '#000' : '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem' }}>{t}%</button>
+            ))}
+          </div>
+        </div>
+        <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: '16px', padding: '16px' }}>
+          <label style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.75rem', display: 'block', marginBottom: '8px' }}>SPLIT BETWEEN</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <button onClick={() => setPeople(p => Math.max(1, p - 1))} style={counterBtn}>−</button>
+            <span style={{ color: '#FFE600', fontSize: '1.6rem', fontWeight: 900, flex: 1, textAlign: 'center' }}>{people} {people === 1 ? 'person' : 'people'}</span>
+            <button onClick={() => setPeople(p => p + 1)} style={counterBtn}>+</button>
+          </div>
+        </div>
+        <div style={{ background: 'rgba(255,230,0,0.12)', border: '2px solid #FFE600', borderRadius: '20px', padding: '20px', textAlign: 'center' }}>
+          <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.75rem', margin: '0 0 4px' }}>EACH PERSON PAYS</p>
+          <p style={{ color: '#FFE600', fontSize: '2.8rem', fontWeight: 900, margin: '0 0 8px' }}>${perPerson.toFixed(2)}</p>
+          <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', margin: 0 }}>Total ${grandTotal.toFixed(2)} · Tip ${tipAmt.toFixed(2)}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const truths = {
+  mild: [
+    "What's the most embarrassing thing you've done in public?",
+    "Have you ever pretended to like someone's food?",
+    "What's your most cringe-worthy text you've ever sent?",
+    "Have you ever faked being sick to get out of plans?"
+  ],
+  spicy: [
+    "Who in this room would you call at 3am?",
+    "What's the worst lie you've ever told?",
+    "Who was your most unexpected crush?",
+    "What's the pettiest thing you've ever done?"
+  ],
+  savage: [
+    "What's a secret you've never told anyone here?",
+    "What's something you'd be mortified if your parents found out?",
+    "Who in this room do you think has the worst taste in partners?",
+    "What's the biggest mistake you've ever made in a relationship?"
+  ]
+};
+
+const dares = {
+  mild: [
+    "Do your best impression of someone in this room.",
+    "Do 20 push-ups or sing a chorus of any song.",
+    "Talk in an accent for the next 3 rounds.",
+    "Do your best runway walk across the room."
+  ],
+  spicy: [
+    "Let someone post anything they want on your story for 10 seconds.",
+    "Show your camera roll to the group (last 5 photos).",
+    "Speak only in questions for the next 2 minutes.",
+    "Let the group change your name in your phone to anything they want."
+  ],
+  savage: [
+    "Text your most recent contact a heart emoji right now.",
+    "Call a friend and say 'I have something important to tell you' then hang up.",
+    "Let the person to your left go through your DMs for 30 seconds.",
+    "Eat a spoonful of whatever condiment the group chooses."
+  ]
+};
+
+function TruthOrDare() {
+  const [mode, setMode] = useState<'truth' | 'dare' | null>(null);
+  const [text, setText] = useState('');
+  const [intensity, setIntensity] = useState<'mild' | 'spicy' | 'savage'>('mild');
+
+  const pick = (type: 'truth' | 'dare') => {
+    setMode(type);
+    const pool = type === 'truth' ? truths[intensity] : dares[intensity];
+    setText(pool[randomInt(0, pool.length - 1)]);
+  };
+
+  return (
+    <div style={toolContainer}>
+      <h2 style={toolTitle}>🃏 Truth or Dare</h2>
+      <div style={{ display: 'flex', background: 'rgba(255,255,255,0.06)', borderRadius: '30px', padding: '4px', marginBottom: '20px', width: '100%', maxWidth: '300px' }}>
+        {(['mild', 'spicy', 'savage'] as const).map(i => (
+          <button key={i} onClick={() => setIntensity(i)} style={{ flex: 1, padding: '8px', borderRadius: '26px', border: 'none', background: intensity === i ? (i === 'savage' ? '#FF2A2A' : i === 'spicy' ? '#FF6B00' : '#FFE600') : 'transparent', color: intensity === i ? '#000' : 'rgba(255,255,255,0.5)', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', transition: 'all 0.2s', textTransform: 'capitalize' }}>{i}</button>
+        ))}
+      </div>
+      {text ? (
+        <div style={{ background: mode === 'truth' ? 'rgba(0,229,255,0.1)' : 'rgba(255,107,0,0.1)', border: `2px solid ${mode === 'truth' ? 'rgba(0,229,255,0.5)' : 'rgba(255,107,0,0.5)'}`, borderRadius: '20px', padding: '24px', marginBottom: '20px', width: '100%', maxWidth: '320px', textAlign: 'center' }}>
+          <p style={{ color: mode === 'truth' ? 'var(--accent-cyan)' : '#FF6B00', fontSize: '0.75rem', fontWeight: 900, letterSpacing: '3px', marginBottom: '12px' }}>{mode?.toUpperCase()}</p>
+          <p style={{ color: '#fff', fontSize: '1.05rem', lineHeight: 1.5, margin: 0, fontWeight: 500 }}>{text}</p>
+        </div>
+      ) : (
+        <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '20px', padding: '32px 24px', marginBottom: '20px', width: '100%', maxWidth: '320px', textAlign: 'center' }}>
+          <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '1rem', margin: 0 }}>Pick Truth or Dare to get a prompt</p>
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: '12px', width: '100%', maxWidth: '320px' }}>
+        <button onClick={() => pick('truth')} style={{ flex: 1, background: 'rgba(0,229,255,0.15)', border: '2px solid rgba(0,229,255,0.5)', color: 'var(--accent-cyan)', borderRadius: '16px', padding: '16px', fontWeight: 900, fontSize: '1rem', cursor: 'pointer' }}>TRUTH</button>
+        <button onClick={() => pick('dare')} style={{ flex: 1, background: 'rgba(255,107,0,0.15)', border: '2px solid rgba(255,107,0,0.5)', color: '#FF6B00', borderRadius: '16px', padding: '16px', fontWeight: 900, fontSize: '1rem', cursor: 'pointer' }}>DARE</button>
+      </div>
+    </div>
+  );
+}
+
+// 8. Scoreboard
+function Scoreboard({ activeGuests = [] }: { activeGuests?: string[] }) {
+  const defaultPlayers = activeGuests.length > 0
+    ? activeGuests.map(name => ({ name, score: 0 }))
+    : [{ name: 'Player 1', score: 0 }, { name: 'Player 2', score: 0 }];
+
+  const [players, setPlayers] = useState<{ name: string; score: number }[]>(defaultPlayers);
+  const [newName, setNewName] = useState('');
+
+  // Sync when guests join the room late
+  useEffect(() => {
+    if (activeGuests.length > 0) {
+      setPlayers(prev => {
+        const existingMap = new Map(prev.map(p => [p.name, p.score]));
+        return activeGuests.map(name => ({ name, score: existingMap.get(name) || 0 }));
+      });
+    }
+  }, [activeGuests.join(',')]);
+
+  const addPlayer = () => {
+    const n = newName.trim();
+    if (n) { setPlayers(p => [...p, { name: n, score: 0 }]); setNewName(''); }
+  };
+
+  const adjust = (i: number, delta: number) =>
+    setPlayers(p => p.map((pl, idx) => idx === i ? { ...pl, score: pl.score + delta } : pl));
+
+  const sorted = [...players].sort((a, b) => b.score - a.score);
+
+  return (
+    <div style={toolContainer}>
+      <h2 style={toolTitle}>🏆 Scoreboard</h2>
+      <div style={{ width: '100%', maxWidth: '360px', display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+        {sorted.map((pl, i) => {
+          const realIdx = players.findIndex(p => p.name === pl.name);
+          return (
+            <div key={pl.name} style={{ background: i === 0 ? 'rgba(255,230,0,0.12)' : 'rgba(255,255,255,0.06)', border: `1px solid ${i === 0 ? '#FFE600' : 'rgba(255,255,255,0.08)'}`, borderRadius: '16px', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <span style={{ fontSize: '1.2rem', width: '28px', textAlign: 'center' }}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`}</span>
+              <span style={{ flex: 1, color: '#fff', fontWeight: 700, fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pl.name}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button onClick={() => adjust(realIdx, -1)} style={{ ...counterBtn, padding: '4px 10px' }}>−</button>
+                <span style={{ color: '#FFE600', fontWeight: 900, fontSize: '1.2rem', minWidth: '36px', textAlign: 'center' }}>{pl.score}</span>
+                <button onClick={() => adjust(realIdx, 1)} style={{ ...counterBtn, padding: '4px 10px', background: 'rgba(255,230,0,0.15)', borderColor: 'rgba(255,230,0,0.3)', color: '#FFE600' }}>+</button>
+                <button onClick={() => setPlayers(p => p.filter((_, idx) => idx !== realIdx))} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '1rem', padding: '4px' }}>×</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: 'flex', gap: '8px', width: '100%', maxWidth: '360px', marginBottom: '12px' }}>
+        <input value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addPlayer()} placeholder="Add player…" style={{ ...inlineInput, flex: 1 }} />
+        <button onClick={addPlayer} style={counterBtn}>+</button>
+      </div>
+      <button style={{ ...actionBtn, background: 'rgba(255,255,255,0.08)', color: '#fff', width: '100%', maxWidth: '360px' }} onClick={() => setPlayers(p => p.map(pl => ({ ...pl, score: 0 })))}>RESET SCORES</button>
+    </div>
+  );
+}
+
 // ─── Tool Grid Home ──────────────────────────────────────────────────────────
 
 const toolList: { id: Tool; label: string; icon: string; color: string }[] = [
@@ -338,6 +557,9 @@ const toolList: { id: Tool; label: string; icon: string; color: string }[] = [
   { id: 'bottle', label: 'Spin the Bottle', icon: '🍾', color: 'rgba(255,107,0,0.15)' },
   { id: 'randomizer', label: 'Randomizer', icon: '🎯', color: 'rgba(0,229,255,0.12)' },
   { id: 'timer', label: 'Timer / Watch', icon: '⏱', color: 'rgba(248,0,177,0.12)' },
+  { id: 'bill', label: 'Bill Splitter', icon: '💰', color: 'rgba(0,200,100,0.12)' },
+  { id: 'truth', label: 'Truth or Dare', icon: '🃏', color: 'rgba(180,0,255,0.12)' },
+  { id: 'scoreboard', label: 'Scoreboard', icon: '🏆', color: 'rgba(255,200,0,0.12)' },
 ];
 
 // ─── Shared Styles ────────────────────────────────────────────────────────────
@@ -374,7 +596,7 @@ const inlineInput: React.CSSProperties = {
 
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 
-export default function ToolsPanel({ activeTool: externalTool }: { activeTool?: Tool }) {
+export default function ToolsPanel({ activeTool: externalTool, activeGuests = [], groups = {} }: { activeTool?: Tool; activeGuests?: string[]; groups?: Record<string, string[]> }) {
   const [activeTool, setActiveTool] = useState<Tool>(externalTool ?? 'home');
 
   useEffect(() => { if (externalTool) setActiveTool(externalTool); }, [externalTool]);
@@ -425,9 +647,12 @@ export default function ToolsPanel({ activeTool: externalTool }: { activeTool?: 
         )}
         {activeTool === 'coin' && <CoinFlip />}
         {activeTool === 'dice' && <DiceRoll />}
-        {activeTool === 'bottle' && <SpinBottle />}
-        {activeTool === 'randomizer' && <Randomizer />}
+        {activeTool === 'bottle' && <SpinBottle activeGuests={activeGuests} />}
+        {activeTool === 'randomizer' && <Randomizer activeGuests={activeGuests} groups={groups} />}
         {activeTool === 'timer' && <TimerTool />}
+        {activeTool === 'bill' && <BillSplitter />}
+        {activeTool === 'truth' && <TruthOrDare />}
+        {activeTool === 'scoreboard' && <Scoreboard activeGuests={activeGuests} />}
       </div>
 
       <style>{`

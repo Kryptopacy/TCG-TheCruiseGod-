@@ -22,12 +22,14 @@ export const metadata: Metadata = {
     siteName: "The Cruise God",
     locale: "en_US",
     type: "website",
+    images: [{ url: "/cover.png", width: 1200, height: 630 }],
   },
   twitter: {
     card: "summary_large_image",
     title: "TCG — The Cruise God",
     description: "Your charismatic AI concierge and game master.",
     creator: "@TCG_CruiseGod",
+    images: ["/cover.png"],
   },
   robots: "index, follow",
   manifest: "/manifest.json",
@@ -41,8 +43,6 @@ export const metadata: Metadata = {
     apple: "/TCG.png",
   },
 };
-
-export const themeColor = "#09090b";
 
 export default async function RootLayout({
   children,

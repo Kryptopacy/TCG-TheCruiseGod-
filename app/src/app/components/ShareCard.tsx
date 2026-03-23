@@ -1,10 +1,10 @@
 'use client';
 
 import React from 'react';
-import { ShareableMoment } from '@/app/types/sharing';
+import { Memory } from '@/app/types/sharing';
 
 interface ShareCardProps {
-  moment: ShareableMoment;
+  moment: Memory;
   id?: string;
 }
 

@@ -11,6 +11,8 @@ implementation_plan.md
 elevenlabs_agent_setup.md
 elevenlabs_agent_setup_final.md
 implementation_plan_production.md
+POST_HACKATHON_FEATURES.md
+implementation_plan_ THAT WAS WRONG BUT HAD INTERESTING INSIGHTS
 *.md
 !app/**/*.md
 

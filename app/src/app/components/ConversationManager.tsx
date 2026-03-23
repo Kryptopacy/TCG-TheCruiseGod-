@@ -12,21 +12,26 @@ import { SearchResult, UnifiedSearchResponse } from '@/app/types/search';
 import { db } from '@/app/lib/db';
 import { useTrophyCapture } from '@/app/hooks/useTrophyCapture';
 import { useDeviceLocation } from '@/app/hooks/useDeviceLocation';
-import { ShareableMoment } from '@/app/types/sharing';
-import { AnimatePresence } from 'framer-motion';
+import { Memory } from '@/app/types/sharing';
+import { AnimatePresence, motion } from 'framer-motion';
 import ToolsPanel from './ToolsPanel';
+import { createClient } from '@/utils/supabase/client';
 
 interface Message {
   id: string;
   role: 'user' | 'agent' | 'system';
   content: string;
   timestamp: Date;
+  metadata?: {
+    image?: string;
+    [key: string]: any;
+  };
 }
 
 export default function ConversationManager() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [activeMode, setActiveMode] = useState<TCGMode>('locator');
-  const [shareables, setShareables] = useState<ShareableMoment[]>([]);
+  const [memories, setMemories] = useState<Memory[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [gameStatus, setGameStatus] = useState<TCGGameStatus | null>(null);
   const [currentResults, setCurrentResults] = useState<UnifiedSearchResponse | null>(null);
@@ -35,13 +40,42 @@ export default function ConversationManager() {
   const [isStarted, setIsStarted] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
   const [userName, setUserName] = useState<string>('');
+  const [wingmanPreferences, setWingmanPreferences] = useState<string>('');
+
+  // CruiseHQ (Multiplayer) States
+  const [roomId, setRoomId] = useState<string>('');
+  const [showQR, setShowQR] = useState(false);
+  const [activeGuests, setActiveGuests] = useState<string[]>([]);
+  const [pushedImage, setPushedImage] = useState<string | null>(null);
+  const [cohostRequests, setCohostRequests] = useState<string[]>([]);
+  const [groups, setGroups] = useState<Record<string, string[]>>({});
+  const [showGroupsModal, setShowGroupsModal] = useState(false);
+  const supabase = useRef(createClient());
+  const roomChannelRef = useRef<ReturnType<typeof supabase.current.channel> | null>(null);
   
   const messageIdCounter = useRef(0);
 
   useEffect(() => {
-    // Attempt to recover user name for seamless UX
-    const savedName = localStorage.getItem('tcg_userName');
-    if (savedName) setUserName(savedName);
+    // Load profile from Supabase user metadata (set on profile page)
+    const loadProfile = async () => {
+      try {
+        const { data: { user } } = await supabase.current.auth.getUser();
+        if (user) {
+          const name = user.user_metadata?.display_name || localStorage.getItem('tcg_userName') || '';
+          const prefs = user.user_metadata?.wingman_preferences || '';
+          setUserName(name);
+          setWingmanPreferences(prefs);
+          if (name) localStorage.setItem('tcg_userName', name);
+        } else {
+          const savedName = localStorage.getItem('tcg_userName');
+          if (savedName) setUserName(savedName);
+        }
+      } catch {
+        const savedName = localStorage.getItem('tcg_userName');
+        if (savedName) setUserName(savedName);
+      }
+    };
+    loadProfile();
   }, []);
 
   const { captureAndUpload } = useTrophyCapture();
@@ -54,16 +88,74 @@ export default function ConversationManager() {
     getDeviceLocation 
   } = useDeviceLocation();
 
-  const addMessage = useCallback((role: 'user' | 'agent' | 'system', content: string) => {
+  const addMessage = useCallback((role: 'user' | 'agent' | 'system', content: string, metadata?: any) => {
     const msg: Message = {
       id: `msg-${messageIdCounter.current++}`,
       role,
       content,
       timestamp: new Date(),
+      metadata
     };
     setMessages(prev => [...prev, msg]);
     return msg;
   }, []);
+
+  useEffect(() => {
+    // Generate Room ID once
+    const newRoomId = Math.random().toString(36).substring(2, 6).toUpperCase();
+    setRoomId(newRoomId);
+
+    // Subscribe to Supabase Realtime Broadcast for this specific room
+    const channel = supabase.current.channel(`room:${newRoomId}`);
+    roomChannelRef.current = channel;
+    
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState();
+        const guests = Object.values(state).flatMap(p => p).map((p: any) => p.cruiseId as string).filter(Boolean);
+        setActiveGuests([...new Set(guests)]);
+      })
+      .on('broadcast', { event: 'guest_action' }, (payload) => {
+        // Inject guest actions dynamically into the transcript.
+        const { type, content, author, image } = payload.payload;
+
+        if (type === 'chat') {
+          addMessage('user', `💬 ${author || 'Guest'}: ${content}`, { image });
+        } else if (type === 'dare') {
+          addMessage('system', `🔥 ${author || 'Guest'} submitted a dare: "${content}"`, { image });
+        } else if (type === 'truth') {
+          addMessage('system', `🤫 ${author || 'Guest'} submitted a truth: "${content}"`, { image });
+        } else if (type === 'song') {
+          addMessage('system', `🎵 ${author || 'Guest'} queued a song: "${content}"`);
+        } else if (type === 'charades') {
+          addMessage('system', `🎭 [HIDDEN] ${author || 'Guest'} submitted a secret charades word.`);
+        } else {
+          addMessage('system', `📬 ${author || 'Guest'} says: "${content}"`, { image });
+        }
+      })
+      .on('broadcast', { event: 'cohost_request' }, (payload) => {
+        const { cruiseId } = payload.payload;
+        setCohostRequests(prev => [...new Set([...prev, cruiseId])]);
+        addMessage('system', `🎙️ ${cruiseId} requested to be a Co-host!`);
+      })
+      .on('broadcast', { event: 'cohost_voice' }, (payload) => {
+        const { transcript, author } = payload.payload;
+        addMessage('user', `🎙️ [Remote Mic] ${author}: ${transcript}`);
+        // Inject the co-host transcript into the live ElevenLabs session
+        if (conversation.status === 'connected') {
+          conversation.sendUserMessage(transcript);
+        }
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log(`[CruiseHQ] Broadcasting listening on room:${newRoomId}`);
+        }
+      });
+
+    return () => {
+      supabase.current.removeChannel(channel);
+    };
+  }, [addMessage]);
 
   const conversation = useConversation({
     onConnect: () => {
@@ -87,11 +179,11 @@ export default function ConversationManager() {
   });
 
   // Client tool handlers
-  const handleCreateShareable = useCallback((params: Record<string, unknown>) => {
+  const handleCreateMemory = useCallback((params: Record<string, unknown>) => {
     const momentId = `share-${Date.now()}`;
-    const moment: ShareableMoment = {
+    const moment: Memory = {
       id: momentId,
-      type: (params.type as ShareableMoment['type']) || 'moment',
+      type: (params.type as Memory['type']) || 'moment',
       title: (params.title as string) || 'TCG Moment',
       content: (params.content as string) || '',
       mode: activeMode,
@@ -99,7 +191,7 @@ export default function ConversationManager() {
     };
     
     // Optimistic UI update
-    setShareables(prev => [...prev, moment]);
+    setMemories(prev => [...prev, moment]);
 
     // Background process for capture & save
     (async () => {
@@ -107,7 +199,7 @@ export default function ConversationManager() {
       await db.saveTrophy({ ...moment, image_url: imageUrl || null });
     })();
 
-    return 'Moment saved to your Trophy Room!';
+    return 'Memory saved to your Trophy Room!';
   }, [activeMode, captureAndUpload]);
 
   const handleSwitchMode = useCallback((params: Record<string, unknown>) => {
@@ -154,7 +246,7 @@ export default function ConversationManager() {
       results: (params.results as SearchResult[]) || [],
       type: (params.type as UnifiedSearchResponse['type']) || 'locations',
       query: (params.query as string) || '',
-      count: (params.results as any[])?.length || 0,
+      count: Array.isArray(params.results) ? params.results.length : 0,
     });
     return 'Results displayed in UI';
   }, []);
@@ -177,7 +269,7 @@ export default function ConversationManager() {
       await conversation.startSession({
         signedUrl,
         clientTools: {
-          createShareableMoment: handleCreateShareable,
+          createMemory: handleCreateMemory,
           switchMode: handleSwitchMode,
           openTool: handleOpenTool,
           updateGameState: handleUpdateGameState,
@@ -187,17 +279,44 @@ export default function ConversationManager() {
           agent: {
             prompt: {
               prompt: `
-              ${userName 
-                ? `The user's name is ${userName}. Greet them joyfully by name! ` 
-                : `You do not know the user's name yet. Warmly ask for their name in your very first message so you can personalize the conversation! If they tell you, playfully celebrate their name! `}
-              
-              ${location 
-                ? `The user's current location is: ${location}. Use this context when searching for places.` 
-                : `The user has not shared their location. If they ask for location-specific things, ask where they are.`}
-              
-              Current mode: ${activeMode}.
-              
-              VIBE CHECK: Be extremely fun, energetic, and embody urban street-smart afrofuturism. Use slang naturally, do NOT be robotic. Keep it punchy!
+<dynamic_context>
+User Name: ${userName ? userName : 'Unknown yet (Ask naturally)'}
+User Location: ${location ? location : 'Unknown (Ask if needed for spots/plugs)'}
+Current UI Mode: ${activeMode}
+${wingmanPreferences ? `
+User's Wingman Protocols: ${wingmanPreferences}
+Always honour these preferences without needing to be reminded.` : ''}
+</dynamic_context>
+
+<role>
+You are TCG — The Cruise God. You are a world-class AI concierge, local expert, and game master all in one. Your personality is magnetic — you're the friend who always knows where to go, who to call, and how to turn a dead hangout into the best night ever.
+</role>
+
+<personality_core>
+- ENERGY: Confident, warm, quick-witted. Match the user's energy (hyped or chill). Never monotone or robotic.
+- PERSONALIZATION: ${userName ? 'Greet them joyfully by name!' : 'Warmly ask for their name in your very first message so you can personalize the conversation!'} Use it naturally.
+- HUMOR: Light, natural humor. Roast gently, hype genuinely. Never corny.
+- BREVITY: You are voice-first. Max 2-3 sentences per turn. No bullet lists. No walls of text. Be concise.
+- CULTURAL AWARENESS: Be inclusive and adaptive. Read the room.
+</personality_core>
+
+<core_workflows>
+1. 🔍 FINDING SPOTS: Call switchMode("locator"). Ask highly dynamic, situational questions to narrow it down if vague. Lead with top 1-2 picks.
+2. 🔌 FINDING SERVICES: Call switchMode("plug"). Ask dynamic, context-aware questions to get specifics. Frame results as personal recommendations.
+3. 🎮 RUNNING GAMES: Call switchMode("game-master"). Find options matching exact energy. Explain rules briefly (< 30s), manage turns, keep score aloud.
+4. 🎲 PARTY TOOLS: Call openTool(tool) for quick utilities (coin, dice, bill, truth, scoreboard, bottle, randomizer, timer). Provide instant color commentary.
+</core_workflows>
+
+<critical_behaviors>
+- LATENCY MGT: Say a natural filler BEFORE tools execute. Never leave silence.
+- BARGE-IN RECOVERY: Call abort and acknowledge naturally ("Say less," "Got it") and handle new request instantly.
+- MEMORIES: Call createMemory for epic/funny quotes, group pictures, or location pictures. Intelligently suggest taking pictures to help the user build a habit of making the moment golden. (Max 1-2 per session).
+- MODE TRANSITIONS: Detect transitions automatically from context. Call switchMode to update UI.
+</critical_behaviors>
+
+<advanced_nlp_handling>
+Flawlessly handle messy natural language: Extract core intent from rambling. Abstract vague reasoning. Triage multi-threading requests. Natively comprehend modern slang. Auto-pivot on interruptions without ever saying "As I was saying."
+</advanced_nlp_handling>
               `,
             },
           },
@@ -205,13 +324,14 @@ export default function ConversationManager() {
       });
     } catch (error) {
       console.error('Failed to start conversation:', error);
+      setIsStarted(false);
       if (error instanceof DOMException && error.name === 'NotAllowedError') {
         setErrorMessage('Microphone access denied. Please allow mic access or use the text chat below.');
       } else {
         setErrorMessage('Could not connect. Check your internet and try again.');
       }
     }
-  }, [conversation, handleCreateShareable, handleSwitchMode, handleOpenTool, location, activeMode]);
+  }, [conversation, handleCreateMemory, handleSwitchMode, handleOpenTool, location, activeMode, wingmanPreferences]);
 
   const stopConversation = useCallback(async () => {
     await conversation.endSession();
@@ -228,9 +348,11 @@ export default function ConversationManager() {
 
   const handleTextMessage = useCallback((text: string) => {
     addMessage('user', text);
-    // Text messages are handled through the ElevenLabs conversation context
-    // The agent will see these via the transcript
-  }, [addMessage]);
+    // Route typed messages into the live ElevenLabs agent session
+    if (conversation.status === 'connected') {
+      conversation.sendUserMessage(text);
+    }
+  }, [addMessage, conversation]);
 
   // Auto-detect location
   const handleGetLocation = useCallback(() => {
@@ -240,14 +362,29 @@ export default function ConversationManager() {
     );
   }, [getDeviceLocation, addMessage]);
 
-  // Derive button status
-  const getButtonStatus = (): 'idle' | 'connecting' | 'listening' | 'speaking' | 'processing' => {
-    if (conversation.status === 'connecting') return 'connecting';
-    if (conversation.status === 'connected') {
-      if (conversation.isSpeaking) return 'speaking';
-      return 'listening';
+  // Derive group assignment for a player
+  const getPlayerGroup = (name: string) => {
+    for (const [groupName, members] of Object.entries(groups)) {
+      if (members.includes(name)) return groupName;
     }
-    return 'idle';
+    return null;
+  };
+
+  const handleRandomizeGroups = (numGroups: number) => {
+    const shuffled = [...activeGuests].sort(() => 0.5 - Math.random());
+    const newGroups: Record<string, string[]> = {};
+    
+    for (let i = 0; i < numGroups; i++) {
+       newGroups[`Group ${String.fromCharCode(65 + i)}`] = [];
+    }
+
+    shuffled.forEach((guest, index) => {
+      const groupKey = `Group ${String.fromCharCode(65 + (index % numGroups))}`;
+      newGroups[groupKey].push(guest);
+    });
+
+    setGroups(newGroups);
+    addMessage('system', `🎲 Randomly assigned ${activeGuests.length} Cruisers into ${numGroups} groups.`);
   };
 
   return (
@@ -263,45 +400,68 @@ export default function ConversationManager() {
             <img src="/TCG.png" alt="TCG Logo" style={{ width: '100%', height: 'auto', filter: 'drop-shadow(0 2px 8px rgba(0, 0, 0, 0.15))' }} />
           </div>
           
-          {/* Location Wrapper */}
+          {/* Location & Room Wrapper */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', zIndex: 30 }}>
-            {showLocationInput ? (
-              <div style={{ background: '#fffbe6', padding: '8px 12px', display: 'flex', gap: '8px', alignItems: 'center', width: '100%', maxWidth: '400px', animation: 'slide-down-toast 0.2s', borderRadius: '16px', border: '2px solid #FFE600', boxShadow: '0 4px 12px rgba(255,230,0,0.15)' }}>
-                <textarea
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  placeholder="Edit full address..."
-                  style={{ flex: 1, background: 'transparent', border: 'none', color: '#000', fontSize: '0.85rem', outline: 'none', minHeight: '40px', resize: 'none', fontFamily: 'inherit', padding: '4px 0' }}
-                  rows={2}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey && location.trim()) {
-                      e.preventDefault();
-                      setShowLocationInput(false);
-                      addMessage('system', `📍 Location set: ${location}`);
-                    }
-                  }}
-                  autoFocus
-                />
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <button onClick={handleGetLocation} disabled={isGettingLocation} style={{ background: '#FFE600', border: '2px solid #d4b800', color: '#000', padding: '6px 12px', borderRadius: '8px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 800 }}>{isGettingLocation ? '...' : 'Auto'}</button>
-                  {location.trim() && <button onClick={() => setShowLocationInput(false)} style={{ background: 'var(--accent-green)', border: 'none', color: '#000', padding: '6px 12px', borderRadius: '8px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 900 }}>OK</button>}
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end', marginBottom: '8px' }}>
+              {/* Active Guests Badge */}
+              {isStarted && activeGuests.length > 0 && (
+                <div 
+                  onClick={() => setShowGroupsModal(true)}
+                  style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: 'var(--radius-full)', background: 'rgba(0, 229, 255, 0.1)', border: '1px solid rgba(0, 229, 255, 0.3)', color: 'var(--accent-cyan)', fontSize: '0.75rem', fontWeight: 800 }}
+                >
+                  👥 {activeGuests.length} Cruiser{activeGuests.length !== 1 ? 's' : ''} {Object.keys(groups).length > 0 ? `(${Object.keys(groups).length} Groups)` : ''}
                 </div>
-              </div>
-            ) : (
-              <button
-                onClick={() => setShowLocationInput(true)}
-                style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: 'var(--radius-full)', border: '2px solid #FFE600', background: '#fffbe6', color: '#8a6000', fontSize: '0.75rem', maxWidth: '100%', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', fontWeight: 700, boxShadow: '0 2px 8px rgba(255,230,0,0.2)' }}
-              >
-                📍 {location || "Set Your Location"}
-              </button>
-            )}
+              )}
+
+              {/* CruiseHQ Code Button */}
+              {isStarted && (
+                <button
+                  onClick={() => setShowQR(true)}
+                  style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: 'var(--radius-full)', border: '2px solid var(--accent-magenta)', background: 'rgba(224, 64, 251, 0.1)', color: 'var(--accent-magenta)', fontSize: '0.75rem', maxWidth: '100%', whiteSpace: 'nowrap', fontWeight: 800, boxShadow: '0 2px 8px rgba(224, 64, 251, 0.2)' }}
+                >
+                  📱 CruiseHQ: {roomId}
+                </button>
+              )}
+            </div>
+
+            {/* Location Input/Badge */}
+              {showLocationInput ? (
+                <div style={{ background: '#fffbe6', padding: '8px 12px', display: 'flex', gap: '8px', alignItems: 'center', width: '100%', maxWidth: '400px', animation: 'slide-down-toast 0.2s', borderRadius: '16px', border: '2px solid #FFE600', boxShadow: '0 4px 12px rgba(255,230,0,0.15)' }}>
+                  <textarea
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    placeholder="Edit full address..."
+                    style={{ flex: 1, background: 'transparent', border: 'none', color: '#000', fontSize: '0.85rem', outline: 'none', minHeight: '40px', resize: 'none', fontFamily: 'inherit', padding: '4px 0' }}
+                    rows={2}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey && location.trim()) {
+                        e.preventDefault();
+                        setShowLocationInput(false);
+                        addMessage('system', `📍 Location set: ${location}`);
+                      }
+                    }}
+                    autoFocus
+                  />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <button onClick={handleGetLocation} disabled={isGettingLocation} style={{ background: '#FFE600', border: '2px solid #d4b800', color: '#000', padding: '6px 12px', borderRadius: '8px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 800 }}>{isGettingLocation ? '...' : 'Auto'}</button>
+                    {location.trim() && <button onClick={() => setShowLocationInput(false)} style={{ background: 'var(--accent-green)', border: 'none', color: '#000', padding: '6px 12px', borderRadius: '8px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 900 }}>OK</button>}
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowLocationInput(true)}
+                  style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: 'var(--radius-full)', border: '2px solid #FFE600', background: '#fffbe6', color: '#8a6000', fontSize: '0.75rem', maxWidth: '100%', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', fontWeight: 700, boxShadow: '0 2px 8px rgba(255,230,0,0.2)' }}
+                >
+                  📍 {location || "Set Your Location"}
+                </button>
+              )}
+            </div>
           </div>
         </div>
-      </div>
 
       {/* Tools Panel Overlay (shown when Tools mode is active) */}
       {activeMode === 'tools' && (
-        <ToolsPanel activeTool={activeToolId as any} />
+        <ToolsPanel activeTool={activeToolId as any} activeGuests={activeGuests} groups={groups} />
       )}
 
       {/* Floating Modes (Pushed below header) */}
@@ -310,6 +470,40 @@ export default function ConversationManager() {
           <ModeSelector activeMode={activeMode} onModeChange={setActiveMode} />
         </div>
       </div>
+
+      {/* Co-host Approval Toast */}
+      {cohostRequests.length > 0 && (
+        <div style={{ position: 'fixed', bottom: '100px', left: '20px', right: '20px', zIndex: 110, display: 'flex', justifyContent: 'center' }}>
+          <div className="glass-card" style={{ padding: '16px 24px', display: 'flex', alignItems: 'center', gap: '16px', border: '2px solid var(--accent-magenta)', boxShadow: '0 0 30px rgba(224, 64, 251, 0.4)', borderRadius: '24px' }}>
+            <span style={{ fontSize: '0.9rem', fontWeight: 800 }}>🎙️ {cohostRequests[0]} wants to be a Co-host</span>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button 
+                onClick={async () => {
+                  const targetId = cohostRequests[0];
+                  if (roomChannelRef.current) {
+                    await roomChannelRef.current.send({
+                      type: 'broadcast',
+                      event: 'cohost_approved',
+                      payload: { cruiseId: targetId }
+                    });
+                  }
+                  setCohostRequests(prev => prev.filter(id => id !== targetId));
+                  addMessage('system', `✅ ${targetId} is now a Co-host.`);
+                }} 
+                style={{ background: 'var(--accent-green)', border: 'none', padding: '8px 16px', borderRadius: '12px', color: '#000', fontWeight: 900, cursor: 'pointer' }}
+              >
+                APPROVE
+              </button>
+              <button 
+                onClick={() => setCohostRequests(prev => prev.slice(1))} 
+                style={{ background: 'rgba(255,255,255,0.1)', border: 'none', padding: '8px 16px', borderRadius: '12px', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+              >
+                IGNORE
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 3. Error Toasts */}
       {errorMessage && (
@@ -363,39 +557,63 @@ export default function ConversationManager() {
         />
       </div>
 
-      {/* Floating Action Button for Chat Mode */
-      isStarted && (
-        <button
-          onClick={() => setShowTranscript(prev => !prev)}
-          style={{
-            position: 'absolute',
-            bottom: '24px',
-            left: '24px', // Moved to the left to avoid overlapping character on the right
-            width: '64px',
-            height: '64px',
-            borderRadius: '50%',
-            background: 'var(--accent-gold)',
-            border: 'none',
-            color: '#000',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            boxShadow: '0 8px 20px rgba(255, 230, 0, 0.4)',
-            zIndex: 60,
-            transition: 'transform 0.1s ease-in-out'
-          }}
-          aria-label="Toggle Text Chat"
-          onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.9)'}
-          onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
-          onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-        >
-          {showTranscript ? (
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-          ) : (
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-          )}
-        </button>
+      {/* Floating Action Button for Chat Mode */}
+      {isStarted && (
+        <div style={{ position: 'absolute', bottom: '24px', left: '24px', display: 'flex', flexDirection: 'column', gap: '16px', zIndex: 60 }}>
+          {/* Manual Memory Capture Button */}
+          <button
+            onClick={() => handleCreateMemory({ type: 'moment', title: 'Captured Memory', content: 'Manually saved by you.' })}
+            style={{
+              width: '56px',
+              height: '56px',
+              borderRadius: '50%',
+              background: 'var(--accent-cyan)',
+              border: 'none',
+              color: '#000',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 8px 20px rgba(0, 229, 255, 0.4)',
+              transition: 'transform 0.1s ease-in-out',
+              fontSize: '1.5rem'
+            }}
+            aria-label="Capture Memory"
+            onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.9)'}
+            onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+          >
+            📸
+          </button>
+          
+          <button
+            onClick={() => setShowTranscript(prev => !prev)}
+            style={{
+              width: '64px',
+              height: '64px',
+              borderRadius: '50%',
+              background: 'var(--accent-gold)',
+              border: 'none',
+              color: '#000',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 8px 20px rgba(255, 230, 0, 0.4)',
+              transition: 'transform 0.1s ease-in-out'
+            }}
+            aria-label="Toggle Text Chat"
+            onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.9)'}
+            onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+          >
+            {showTranscript ? (
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            ) : (
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+            )}
+          </button>
+        </div>
       )}
 
       {/* Transcript Drawer Overlay */}
@@ -404,7 +622,7 @@ export default function ConversationManager() {
           {activeMode === 'game-master' && gameStatus && (
             <GameSession 
               key="game-session"
-              gameStatus={gameStatus} 
+              gameStatus={gameStatus!} 
               onEndGame={() => setGameStatus(null)} 
             />
           )}
@@ -416,9 +634,154 @@ export default function ConversationManager() {
             onSendMessage={handleTextMessage}
             isConnected={conversation.status === 'connected'}
             isAgentSpeaking={conversation.isSpeaking}
+            onPushImage={(img) => setPushedImage(img)}
           />
         </AnimatePresence>
       </div>
+
+      {/* 6. Push to Screen Overlay */}
+      <AnimatePresence>
+        {pushedImage && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            onClick={() => setPushedImage(null)}
+            style={{ 
+              position: 'fixed', 
+              inset: 0, 
+              zIndex: 200, 
+              background: 'rgba(0,0,0,0.9)', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              cursor: 'zoom-out',
+              padding: '40px'
+            }}
+          >
+            <motion.img 
+              src={pushedImage} 
+              alt="Pushed to screen" 
+              style={{ 
+                maxWidth: '90%', 
+                maxHeight: '90%', 
+                borderRadius: '24px', 
+                boxShadow: '0 0 100px rgba(224, 64, 251, 0.4)',
+                border: '4px solid #FFE600'
+              }} 
+            />
+            <div style={{ position: 'absolute', bottom: '40px', color: '#fff', fontSize: '1.2rem', fontWeight: 800, background: 'rgba(0,0,0,0.5)', padding: '12px 24px', borderRadius: '40px' }}>
+              TAP TO DISMISS
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 7. Groups Management Modal */}
+      <AnimatePresence>
+        {showGroupsModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{ position: 'fixed', inset: 0, zIndex: 120, background: 'rgba(5, 5, 15, 0.9)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}
+          >
+            <div className="glass-card-heavy" style={{ padding: '32px', maxWidth: '500px', width: '100%', border: '1px solid var(--accent-cyan)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                <h2 style={{ color: 'var(--accent-cyan)', fontWeight: 900, fontSize: '1.5rem', margin: 0 }}>CRUISER ROSTER</h2>
+                <button onClick={() => setShowGroupsModal(false)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: '1.5rem', cursor: 'pointer' }}>✕</button>
+              </div>
+
+              <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '24px', paddingRight: '8px' }}>
+                {activeGuests.length === 0 ? (
+                  <p style={{ color: 'rgba(255,255,255,0.4)', textAlign: 'center' }}>No cruisers connected yet...</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {activeGuests.map(guest => (
+                      <div key={guest} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: 'rgba(255,255,255,0.05)', borderRadius: '12px' }}>
+                        <span style={{ fontWeight: 700 }}>{guest}</span>
+                        {getPlayerGroup(guest) && (
+                          <span style={{ fontSize: '0.7rem', background: 'var(--accent-magenta)', color: '#fff', padding: '4px 8px', borderRadius: '8px' }}>
+                            {getPlayerGroup(guest)}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {activeGuests.length > 1 && (
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '24px' }}>
+                  <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', marginBottom: '16px', fontWeight: 700 }}>QUICK ACTIONS</p>
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <button 
+                      onClick={() => handleRandomizeGroups(2)}
+                      style={{ flex: 1, background: 'var(--accent-cyan)', color: '#000', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: 900, cursor: 'pointer' }}
+                    >
+                      SPLIT 50/50
+                    </button>
+                    <button 
+                      onClick={() => handleRandomizeGroups(3)}
+                      style={{ flex: 1, background: 'transparent', border: '2px solid var(--accent-cyan)', color: 'var(--accent-cyan)', padding: '12px', borderRadius: '12px', fontWeight: 900, cursor: 'pointer' }}
+                    >
+                      3 GROUPS
+                    </button>
+                    {Object.keys(groups).length > 0 && (
+                      <button 
+                        onClick={() => setGroups({})}
+                        style={{ flex: 1, background: 'rgba(255, 42, 42, 0.1)', color: '#FF2A2A', border: '1px solid #FF2A2A', padding: '12px', borderRadius: '12px', fontWeight: 800, cursor: 'pointer' }}
+                      >
+                        RESET
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* CruiseHQ Join QR Code Modal */}
+      <AnimatePresence>
+        {showQR && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(5, 5, 15, 0.9)', backdropFilter: 'blur(12px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px' }}
+          >
+            <div className="glass-card-heavy" style={{ padding: '40px', textAlign: 'center', maxWidth: '380px', width: '100%', border: '1px solid rgba(224, 64, 251, 0.3)', boxShadow: '0 10px 50px rgba(0,0,0,0.8)' }}>
+              <h2 className="gradient-text" style={{ fontSize: '2rem', fontWeight: 900, marginBottom: '8px', background: 'var(--gradient-magenta)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.5px' }}>
+                Join CruiseHQ
+              </h2>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: '24px', lineHeight: 1.5 }}>
+                Scan to join <strong>{roomId}</strong>. Chat with everyone, or submit private truths, dares, charades, and songs!
+              </p>
+              
+              <div style={{ background: '#fff', padding: '16px', borderRadius: '24px', marginBottom: '32px', display: 'inline-block', boxShadow: '0 0 30px rgba(224, 64, 251, 0.3)' }}>
+                {/* Dynamically generating the QR Code linking to the Guest UI route */}
+                {/* Fallback host URL for local testing or production */}
+                {typeof window !== 'undefined' && (
+                  <img 
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(`${window.location.origin}/room/${roomId}`)}`} 
+                    alt="CruiseHQ QR Code" 
+                    style={{ width: '220px', height: '220px', display: 'block' }} 
+                  />
+                )}
+              </div>
+              
+              <button 
+                onClick={() => setShowQR(false)} 
+                style={{ background: 'var(--gradient-magenta)', border: 'none', padding: '16px 24px', borderRadius: 'var(--radius-full)', color: '#fff', fontWeight: 800, cursor: 'pointer', width: '100%', fontSize: '1rem', boxShadow: '0 4px 20px rgba(224, 64, 251, 0.4)' }}
+              >
+                Close Scanner
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* 8. Splash Screen Overlay */}
       {!isStarted && (

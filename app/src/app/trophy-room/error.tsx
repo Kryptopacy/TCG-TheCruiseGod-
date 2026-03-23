@@ -41,7 +41,7 @@ export default function TrophyRoomError({
         lineHeight: 1.5,
         marginBottom: '24px'
       }}>
-        We ran into an issue loading your shareable moments. The vault may be temporarily locked.
+        We ran into an issue loading your memories. The vault may be temporarily locked.
       </p>
       
       <div style={{ display: 'flex', gap: '12px' }}>

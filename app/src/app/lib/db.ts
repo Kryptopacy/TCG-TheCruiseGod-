@@ -7,17 +7,17 @@
  * Current Phase: Preparation for Supabase / PostgreSQL integration.
  */
 
-import { ShareableMoment } from '@/app/types/sharing';
+import { Memory } from '@/app/types/sharing';
 import { createClient } from '@/utils/supabase/client';
 
 export interface DBClient {
-  saveTrophy: (trophy: ShareableMoment) => Promise<boolean>;
-  getTrophies: (limit?: number) => Promise<ShareableMoment[]>;
+  saveTrophy: (trophy: Memory) => Promise<boolean>;
+  getTrophies: (limit?: number) => Promise<Memory[]>;
   deleteTrophy: (id: string) => Promise<boolean>;
 }
 
 // Supabase implementation
-const isDemoMode = () => typeof document !== 'undefined' && document.cookie.includes('tcg_demo_mode=true');
+const isDemoMode = () => process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 
 export const db: DBClient = {
   saveTrophy: async (trophy) => {
@@ -38,7 +38,7 @@ export const db: DBClient = {
 
       const { error } = await supabase.from('trophies').insert({
         id: trophy.id,
-        user_id: user.id,
+        // user_id is auto-populated by Postgres default value `auth.uid()` based on RLS
         type: trophy.type,
         title: trophy.title,
         content: trophy.content,
@@ -61,7 +61,7 @@ export const db: DBClient = {
   getTrophies: async (limit) => {
     try {
       if (isDemoMode()) {
-        const existing: ShareableMoment[] = JSON.parse(localStorage.getItem('tcg_trophies') || '[]');
+        const existing: Memory[] = JSON.parse(localStorage.getItem('tcg_trophies') || '[]');
         return limit ? existing.slice(0, limit) : existing;
       }
 
@@ -71,8 +71,8 @@ export const db: DBClient = {
 
       let query = supabase
         .from('trophies')
-        .select('*')
-        .eq('user_id', user.id) // Best Practice: Explicitly scope to auth limits to optimize index use
+        .select('id, type, title, content, mode, image_url, created_at, user_id') // Best Practice: explicit columns
+        // Best Practice: Omit .eq('user_id', user.id) - Postgres RLS handles this securely at the DB layer
         .order('created_at', { ascending: false });
 
       if (limit) query = query.limit(limit);
@@ -82,10 +82,10 @@ export const db: DBClient = {
 
       return data.map(row => ({
         id: row.id,
-        type: row.type as ShareableMoment['type'],
+        type: row.type as Memory['type'],
         title: row.title,
         content: row.content,
-        mode: row.mode as ShareableMoment['mode'],
+        mode: row.mode as Memory['mode'],
         image_url: row.image_url || undefined,
         timestamp: row.created_at,
         user_id: row.user_id
@@ -98,13 +98,14 @@ export const db: DBClient = {
   deleteTrophy: async (id) => {
     try {
       if (isDemoMode()) {
-        const existing: ShareableMoment[] = JSON.parse(localStorage.getItem('tcg_trophies') || '[]');
-        const updated = existing.filter((t: ShareableMoment) => t.id !== id);
+        const existing: Memory[] = JSON.parse(localStorage.getItem('tcg_trophies') || '[]');
+        const updated = existing.filter((t: Memory) => t.id !== id);
         localStorage.setItem('tcg_trophies', JSON.stringify(updated));
         return true;
       }
 
       const supabase = createClient();
+      // Best practice: rely on RLS to ensure a user can only delete their own row
       const { error } = await supabase.from('trophies').delete().eq('id', id);
       return !error;
     } catch {

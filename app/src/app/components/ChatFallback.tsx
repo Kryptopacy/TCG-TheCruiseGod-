@@ -9,6 +9,9 @@ interface Message {
   role: 'user' | 'agent' | 'system';
   content: string;
   timestamp: Date;
+  metadata?: {
+    image?: string;
+  };
 }
 
 interface ChatFallbackProps {
@@ -17,9 +20,10 @@ interface ChatFallbackProps {
   onSendMessage: (message: string) => void;
   isConnected: boolean;
   isAgentSpeaking: boolean;
+  onPushImage?: (imageUrl: string) => void;
 }
 
-export default function ChatFallback({ messages, currentResults, onSendMessage, isConnected, isAgentSpeaking }: ChatFallbackProps) {
+export default function ChatFallback({ messages, currentResults, onSendMessage, isConnected, isAgentSpeaking, onPushImage }: ChatFallbackProps) {
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -95,7 +99,35 @@ export default function ChatFallback({ messages, currentResults, onSendMessage, 
                 TCG
               </div>
             )}
-            <div>{msg.content}</div>
+            <div>
+              {msg.content}
+              {msg.metadata?.image && (
+                <div style={{ marginTop: '12px', position: 'relative', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
+                  <img src={msg.metadata.image} alt="Shared" style={{ width: '100%', height: 'auto', display: 'block' }} />
+                  {onPushImage && (
+                    <button 
+                      onClick={() => onPushImage(msg.metadata!.image!)}
+                      style={{ 
+                        position: 'absolute', 
+                        bottom: '8px', 
+                        right: '8px', 
+                        background: 'var(--accent-magenta)', 
+                        color: '#fff', 
+                        border: 'none', 
+                        padding: '6px 12px', 
+                        borderRadius: '20px', 
+                        fontSize: '0.65rem', 
+                        fontWeight: 800, 
+                        cursor: 'pointer',
+                        boxShadow: '0 4px 12px rgba(224, 64, 251, 0.4)'
+                      }}
+                    >
+                      PUSH TO SCREEN 📺
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         ))}
 

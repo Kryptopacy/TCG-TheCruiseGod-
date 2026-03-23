@@ -3,7 +3,7 @@
 import { useCallback } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import { captureShareCard } from '@/app/lib/shareUtils';
-import { ShareableMoment } from '@/app/types/sharing';
+import { Memory } from '@/app/types/sharing';
 
 export function useTrophyCapture() {
   const captureAndUpload = useCallback(async (momentId: string): Promise<string | undefined> => {
