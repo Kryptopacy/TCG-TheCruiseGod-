@@ -526,7 +526,7 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
           {/* Logo */}
           <div style={{ width: 'min(140px, 30vw)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <img src="/TCG.png" alt="TCG Logo" style={{ width: '100%', height: 'auto', filter: 'drop-shadow(0 2px 8px rgba(0, 0, 0, 0.5))' }} />
+            <img src="/tcg-logo.png" alt="TCG Logo" style={{ width: '100%', height: 'auto', filter: 'drop-shadow(0 2px 8px rgba(0, 0, 0, 0.5))' }} />
             <button 
               onClick={() => setShowSettings(true)}
               style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: '4px', opacity: 0.7, color: '#fff' }}
@@ -695,7 +695,7 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
         title={conversation.status === 'connected' ? "Tap to Disconnect" : "Tap to Connect"}
       >
         <img 
-          src="/TCG character.png" 
+          src="/tcg-character.png" 
           alt="The Cruise God"
           style={{ width: '100%', height: 'auto', display: 'block', pointerEvents: 'none' }} 
         />
@@ -978,7 +978,7 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
           padding: '24px',
           textAlign: 'center'
         }}>
-          <img src="/TCG.png" alt="TCG Character" style={{ width: '320px', height: 'auto', marginBottom: '48px', filter: 'drop-shadow(0 15px 30px rgba(0,0,0,0.6))', animation: 'idle-float 4s infinite ease-in-out', willChange: 'transform' }} />
+          <img src="/tcg-logo.png" alt="TCG Character" style={{ width: '320px', height: 'auto', marginBottom: '48px', filter: 'drop-shadow(0 15px 30px rgba(0,0,0,0.6))', animation: 'idle-float 4s infinite ease-in-out', willChange: 'transform' }} />
           <button 
             className="chunky-button"
             onClick={() => {
