@@ -12,6 +12,7 @@ interface Message {
   metadata?: {
     image?: string;
   };
+  replyTo?: { author: string; preview: string };
 }
 
 interface ChatFallbackProps {
@@ -21,10 +22,32 @@ interface ChatFallbackProps {
   isConnected: boolean;
   isAgentSpeaking: boolean;
   onPushImage?: (imageUrl: string) => void;
+  cruiseId?: string; // user's CruiseID to display on own bubbles
 }
 
-export default function ChatFallback({ messages, currentResults, onSendMessage, isConnected, isAgentSpeaking, onPushImage }: ChatFallbackProps) {
+/** Parse @mentions in a string and wrap them in a styled span */
+function renderWithMentions(text: string) {
+  const parts = text.split(/(@\w+)/g);
+  return parts.map((part, i) =>
+    part.match(/^@\w+$/) ? (
+      <span key={i} className="mention-tag">{part}</span>
+    ) : (
+      <React.Fragment key={i}>{part}</React.Fragment>
+    )
+  );
+}
+
+export default function ChatFallback({
+  messages,
+  currentResults,
+  onSendMessage,
+  isConnected,
+  isAgentSpeaking,
+  onPushImage,
+  cruiseId,
+}: ChatFallbackProps) {
   const [input, setInput] = useState('');
+  const [replyTarget, setReplyTarget] = useState<{ author: string; preview: string } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -36,25 +59,51 @@ export default function ChatFallback({ messages, currentResults, onSendMessage, 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || !isConnected) return;
-    onSendMessage(input.trim());
+    const text = replyTarget
+      ? `↩ @${replyTarget.author}: ${input.trim()}`
+      : input.trim();
+    onSendMessage(text);
     setInput('');
+    setReplyTarget(null);
+  };
+
+  const getAuthorLabel = (msg: Message) => {
+    if (msg.role === 'agent') return 'TCG 🔥';
+    if (msg.role === 'user') return cruiseId || 'You';
+    return null;
   };
 
   return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      flex: 1,
-      minHeight: 0,
-    }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+
+      {/* Drawer header */}
+      <div style={{
+        padding: '8px 16px 6px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        borderBottom: '1px solid rgba(255,150,0,0.12)',
+      }}>
+        <span style={{
+          fontFamily: 'var(--font-display)',
+          fontSize: '0.78rem',
+          fontWeight: 900,
+          textTransform: 'uppercase',
+          letterSpacing: '0.08em',
+          background: 'linear-gradient(90deg, #FFE600, #FF6B00)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+        }}>Chat with TCG</span>
+        <span style={{ fontSize: '0.65rem', color: 'rgba(255,200,80,0.45)', fontWeight: 600 }}>
+          {isConnected ? '🟢 Live' : '⚪ Offline'}
+        </span>
+      </div>
+
       {/* Transcript area */}
       <div
         ref={scrollRef}
         className="transcript-area"
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-        }}
+        style={{ flex: 1, overflowY: 'auto' }}
       >
         {messages.length === 0 && (
           <div style={{
@@ -67,141 +116,83 @@ export default function ChatFallback({ messages, currentResults, onSendMessage, 
             padding: '40px 20px',
             textAlign: 'center',
           }}>
-            <span style={{
-              fontSize: '2rem',
-            }}>🎤</span>
+            <span style={{ fontSize: '2.5rem' }}>🔥</span>
             <p style={{
-              color: 'var(--text-muted)',
+              color: 'rgba(255, 200, 80, 0.5)',
               fontSize: '0.85rem',
-              maxWidth: '280px',
+              maxWidth: '260px',
               lineHeight: 1.5,
+              fontStyle: 'italic',
             }}>
               Tap the mic or type below to start vibing with TCG
             </p>
           </div>
         )}
 
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`transcript-bubble ${msg.role}`}
-          >
-            {msg.role === 'agent' && (
-              <div style={{
-                fontSize: '0.7rem',
-                fontWeight: 600,
-                color: 'var(--accent-magenta)',
-                marginBottom: '4px',
-                fontFamily: 'var(--font-display)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-              }}>
-                TCG
-              </div>
-            )}
-            <div>
-              {msg.content}
-              {msg.metadata?.image && (
-                <div style={{ marginTop: '12px', position: 'relative', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
-                  <img src={msg.metadata.image} alt="Shared" style={{ width: '100%', height: 'auto', display: 'block' }} />
-                  {onPushImage && (
-                    <button 
-                      onClick={() => onPushImage(msg.metadata!.image!)}
-                      style={{ 
-                        position: 'absolute', 
-                        bottom: '8px', 
-                        right: '8px', 
-                        background: 'var(--accent-magenta)', 
-                        color: '#fff', 
-                        border: 'none', 
-                        padding: '6px 12px', 
-                        borderRadius: '20px', 
-                        fontSize: '0.65rem', 
-                        fontWeight: 800, 
-                        cursor: 'pointer',
-                        boxShadow: '0 4px 12px rgba(224, 64, 251, 0.4)'
-                      }}
-                    >
-                      PUSH TO SCREEN 📺
-                    </button>
-                  )}
+        {messages.map((msg) => {
+          const isUser = msg.role === 'user';
+          const isAgent = msg.role === 'agent';
+          const isSystem = msg.role === 'system';
+          const author = getAuthorLabel(msg);
+
+          return (
+            <div
+              key={msg.id}
+              className={`transcript-bubble ${msg.role}`}
+              style={{ position: 'relative' }}
+            >
+              {/* CruiseID tag on user bubbles */}
+              {isUser && (
+                <span className="cruise-id-tag">
+                  🚢 {cruiseId || 'You'}
+                </span>
+              )}
+
+              {/* Agent label */}
+              {isAgent && !isSystem && (
+                <div style={{
+                  fontSize: '0.68rem',
+                  fontWeight: 900,
+                  color: '#FF8C00',
+                  marginBottom: '5px',
+                  fontFamily: 'var(--font-display)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}>
+                  TCG 🔥
                 </div>
               )}
-            </div>
-          </div>
-        ))}
 
-        {currentResults && (
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '12px',
-            margin: '12px 0',
-            animation: 'slide-up 0.4s ease-out',
-          }}>
-            <div style={{ 
-              fontSize: '0.75rem', 
-              color: 'var(--text-muted)', 
-              fontWeight: 600, 
-              textTransform: 'uppercase',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}>
-              <span>Found {currentResults.results.length} results</span>
-              <div style={{ flex: 1, height: '1px', background: 'var(--border-subtle)' }} />
-            </div>
-            {currentResults.results.map((res, idx) => (
-              <ResultCard key={`${res.title}-${idx}`} result={res} type={currentResults.type} index={idx} />
-            ))}
-          </div>
-        )}
+              {/* Reply quote (if this message replied to something) */}
+              {msg.replyTo && (
+                <div className="reply-quote">
+                  <strong style={{ color: '#FF8C00', fontSize: '0.68rem' }}>↩ {msg.replyTo.author}</strong>
+                  <div>{msg.replyTo.preview}</div>
+                </div>
+              )}
 
-        {isAgentSpeaking && (
-          <div className="transcript-bubble agent">
-            <div style={{
-              fontSize: '0.7rem',
-              fontWeight: 600,
-              color: 'var(--accent-magenta)',
-              marginBottom: '4px',
-              fontFamily: 'var(--font-display)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-            }}>
-              TCG
-            </div>
-            <div className="loading-dots">
-              <span></span>
-              <span></span>
-              <span></span>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Chat input */}
-      <form onSubmit={handleSubmit} className="chat-input-area">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder={isConnected ? "Type your message..." : "Connect to start chatting"}
-          disabled={!isConnected}
-          className="chat-input"
-          id="chat-input"
-        />
-        <button
-          type="submit"
-          disabled={!input.trim() || !isConnected}
-          className="send-btn"
-          aria-label="Send message"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"></line>
-            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-          </svg>
-        </button>
-      </form>
-    </div>
-  );
-}
+              {/* Message content */}
+              <div>
+                {renderWithMentions(msg.content)}
+                {msg.metadata?.image && (
+                  <div style={{ marginTop: '10px', position: 'relative', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,150,0,0.2)' }}>
+                    <img src={msg.metadata.image} alt="Shared" style={{ width: '100%', height: 'auto', display: 'block' }} />
+                    {onPushImage && (
+                      <button
+                        onClick={() => onPushImage(msg.metadata!.image!)}
+                        style={{
+                          position: 'absolute',
+                          bottom: '8px',
+                          right: '8px',
+                          background: 'linear-gradient(135deg, #FF8C00, #CC1010)',
+                          color: '#fff',
+                          border: 'none',
+                          padding: '6px 12px',
+                          borderRadius: '20px',
+                          fontSize: '0.65rem',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                    

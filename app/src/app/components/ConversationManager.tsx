@@ -45,8 +45,19 @@ export default function ConversationManager() {
   const [showCruiseHQ, setShowCruiseHQ] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [userName, setUserName] = useState<string>('');
-  const [agentId, setAgentId] = useState<string>('rB4Vb4wWn5JDEJ2jJrdR');
   const [wingmanPreferences, setWingmanPreferences] = useState<string>('');
+
+  // Video stream background
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
+  const [isVideoPaused, setIsVideoPaused] = useState(false);
+  const isDesktop = typeof window !== 'undefined'
+    ? !('ontouchstart' in window) && navigator.maxTouchPoints === 0
+    : true;
+
+  // Mic mute state
+  const [isMicMuted, setIsMicMuted] = useState(false);
 
 
   // CruiseHQ (Multiplayer) States
@@ -58,10 +69,8 @@ export default function ConversationManager() {
   const [cohostRequests, setCohostRequests] = useState<string[]>([]);
   const [groups, setGroups] = useState<Record<string, string[]>>({});
   const [showGroupsModal, setShowGroupsModal] = useState(false);
-  const supabase = useRef(typeof window !== 'undefined' ? createClient() : null as unknown as ReturnType<typeof createClient>);
-  if (!supabase.current && typeof window !== 'undefined') {
-    supabase.current = createClient();
-  }
+  // createClient() is a singleton — safe to call unconditionally.
+  const supabase = useRef(createClient());
   const roomChannelRef = useRef<any>(null);
   const conversationRef = useRef<typeof conversation | null>(null);
 
@@ -94,16 +103,60 @@ export default function ConversationManager() {
         }
         
         setUserName(nameToSet);
-        setAgentId(agentToSet);
       } catch {
         const savedName = localStorage.getItem('tcg_userName') || '';
-        const savedAgent = localStorage.getItem('tcg_agentId') || 'rB4Vb4wWn5JDEJ2jJrdR';
         setUserName(savedName);
-        setAgentId(savedAgent);
       }
     };
     loadProfile();
   }, []);
+
+  // Start camera stream for video background
+  const startVideoStream = useCallback(async (facing: 'user' | 'environment') => {
+    try {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } }
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch {
+      // Camera denied or not available — fine, background stays yellow
+    }
+  }, []);
+
+  useEffect(() => {
+    startVideoStream(facingMode);
+    return () => {
+      streamRef.current?.getTracks().forEach(t => t.stop());
+    };
+  }, [facingMode, startVideoStream]);
+
+  const flipCamera = () => {
+    setFacingMode(prev => prev === 'environment' ? 'user' : 'environment');
+  };
+
+  const toggleVideoStream = () => {
+    setIsVideoPaused(prev => {
+      const next = !prev;
+      if (videoRef.current) videoRef.current.pause();
+      if (!next && videoRef.current) videoRef.current.play();
+      return next;
+    });
+  };
+
+  // Toggle mic mute via ElevenLabs SDK
+  const toggleMicMute = useCallback(() => {
+    setIsMicMuted(prev => {
+      const next = !prev;
+      try { (conversation as any).setMute?.(next); } catch {}
+      return next;
+    });
+  }, [conversation]);
 
   const { captureAndUpload } = useTrophyCapture();
   const { 
@@ -140,6 +193,13 @@ export default function ConversationManager() {
     // Subscribe to Supabase Realtime Broadcast for this specific room
     const channel = supabase.current.channel(`room:${newRoomId}`);
     roomChannelRef.current = channel;
+
+    // Local helper — reads from conversationRef so no stale-closure or hoisting issues.
+    const injectIfConnected = (text: string) => {
+      if (conversationRef.current?.status === 'connected') {
+        try { conversationRef.current.sendUserMessage(text); } catch { /* closed */ }
+      }
+    };
     
     channel
       .on('presence', { event: 'sync' }, () => {
@@ -157,11 +217,9 @@ export default function ConversationManager() {
         joined.forEach(g => {
           addMessage('system', `👋 ${g} joined CruiseHQ! (${uniqueGuests.length} total)`);
           // Let the live agent know so it can acknowledge
-          if (conversationRef.current?.status === 'connected') {
-            conversationRef.current.sendUserMessage(
-              `[SYSTEM] New guest joined: ${g}. Active guests are now: ${uniqueGuests.join(', ')} (${uniqueGuests.length} total).`
-            );
-          }
+          injectIfConnected(
+            `[SYSTEM] New guest joined: ${g}. Active guests are now: ${uniqueGuests.join(', ')} (${uniqueGuests.length} total).`
+          );
         });
         left.forEach(g => {
           addMessage('system', `🚶 ${g} left the room. (${uniqueGuests.length} remaining)`);
@@ -189,12 +247,8 @@ export default function ConversationManager() {
         const msg = payload.payload;
         // If someone @tags TCG in the room chat, forward it to the Agent
         if (msg.text && (msg.text.includes('@TCG') || msg.text.includes('@tcg'))) {
-          if (conversationRef.current?.status === 'connected') {
-            const groupName = msg.groupId === 'main' ? 'the Main Room' : `Group ${msg.groupId}`;
-            conversationRef.current.sendUserMessage(
-              `[From ${msg.sender} in ${groupName}]: ${msg.text}`
-            );
-          }
+          const groupName = msg.groupId === 'main' ? 'the Main Room' : `Group ${msg.groupId}`;
+          injectIfConnected(`[From ${msg.sender} in ${groupName}]: ${msg.text}`);
         }
       })
       .on('broadcast', { event: 'cohost_request' }, (payload) => {
@@ -206,9 +260,7 @@ export default function ConversationManager() {
         const { transcript, author } = payload.payload;
         addMessage('user', `🎙️ [Remote Mic] ${author}: ${transcript}`);
         // Inject the co-host transcript into the live ElevenLabs session via ref
-        if (conversationRef.current?.status === 'connected') {
-          conversationRef.current.sendUserMessage(transcript);
-        }
+        injectIfConnected(transcript);
       })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
@@ -246,6 +298,21 @@ export default function ConversationManager() {
   useEffect(() => {
     conversationRef.current = conversation;
   });
+
+  /**
+   * Safe wrapper around sendUserMessage — silently skips if the WebSocket is not
+   * in a "connected" state, preventing the flood of
+   * "WebSocket is already in CLOSING or CLOSED state" errors.
+   */
+  const safeInjectMessage = useCallback((text: string) => {
+    if (conversationRef.current?.status === 'connected') {
+      try {
+        conversationRef.current.sendUserMessage(text);
+      } catch {
+        // WebSocket may have closed between the status check and the send — ignore.
+      }
+    }
+  }, []);
 
   // Client tool handlers
   const handleCreateMemory = useCallback((params: Record<string, unknown>) => {
@@ -362,9 +429,7 @@ export default function ConversationManager() {
   const handleVisionResult = useCallback((result: string, structured?: any) => {
     // Inject vision result into live transcript so agent gets context
     addMessage('system', `🔍 Vision result: ${result}`);
-    if (conversation.status === 'connected') {
-      conversation.sendUserMessage(`[Vision Analysis Complete] ${result}`);
-    }
+    safeInjectMessage(`[Vision Analysis Complete] ${result}`);
     // If it's a bill result, auto-populate the UI feedback
     if (structured?.total) {
       addMessage('system', `💰 Detected total: $${structured.total}. ${structured.summary || ''}`);
@@ -378,8 +443,8 @@ export default function ConversationManager() {
       // Request microphone permission
       await navigator.mediaDevices.getUserMedia({ audio: true });
 
-      // Get signed URL from our API route natively supporting dynamic agent selection
-      const response = await fetch('/api/get-signed-url?agentId=' + agentId);
+      // Get signed URL from our API route
+      const response = await fetch('/api/get-signed-url');
       if (!response.ok) {
         throw new Error('Failed to get signed URL');
       }
@@ -518,11 +583,61 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
 
   return (
     <div id="tcg-capture-area" className="page-container">
-      {/* 1. Radical Multi-Layer Background */}
-      <div className="radical-bg" />
+      {/* 1. Live Camera Video Background */}
+      <div className="video-bg">
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          style={{
+            transform: facingMode === 'user' ? 'scaleX(-1)' : 'none',
+            display: isVideoPaused ? 'none' : 'block'
+          }}
+        />
+        <div className="video-bg-overlay" />
+      </div>
+      {/* Fallback radical bg (also present when video paused) */}
+      <div className="radical-bg" style={{ opacity: isVideoPaused ? 1 : 0.4 }} />
+
+      {/* Camera flip + pause controls (top-right overlay) */}
+      {isStarted && !isVideoPaused && (
+        <div style={{ position: 'absolute', top: 'max(8px, env(safe-area-inset-top))', right: '8px', zIndex: 25, display: 'flex', gap: '6px' }}>
+          {!isDesktop && (
+            <button
+              onClick={flipCamera}
+              className="camera-ctrl-btn"
+              style={{ position: 'relative', bottom: 'auto', right: 'auto', left: 'auto' }}
+              title="Flip Camera"
+            >
+              🔄 Flip
+            </button>
+          )}
+          <button
+            onClick={toggleVideoStream}
+            className="camera-ctrl-btn"
+            style={{ position: 'relative', bottom: 'auto', right: 'auto', left: 'auto' }}
+            title="Pause Video"
+          >
+            ⏸ Pause
+          </button>
+        </div>
+      )}
+      {isStarted && isVideoPaused && (
+        <div style={{ position: 'absolute', top: 'max(8px, env(safe-area-inset-top))', right: '8px', zIndex: 25 }}>
+          <button
+            onClick={toggleVideoStream}
+            className="camera-ctrl-btn"
+            style={{ position: 'relative', bottom: 'auto', right: 'auto', left: 'auto', borderColor: 'rgba(255,100,0,0.6)', color: '#FF8C00' }}
+            title="Resume Video"
+          >
+            ▶ Resume
+          </button>
+        </div>
+      )}
 
       {/* 2. Distinct Header Layer: Logo and Location */}
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20, background: 'rgba(10, 10, 20, 0.88)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.08)', padding: 'max(12px, env(safe-area-inset-top)) 14px 12px', boxShadow: '0 4px 30px rgba(0,0,0,0.5)', borderRadius: '20px', margin: '6px' }}>
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20, background: 'linear-gradient(135deg, rgba(120,8,8,0.93) 0%, rgba(90,4,4,0.93) 100%)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', borderBottom: '1px solid rgba(255,200,0,0.18)', padding: 'max(12px, env(safe-area-inset-top)) 14px 12px', boxShadow: '0 4px 30px rgba(0,0,0,0.6), 0 1px 0 rgba(255,180,0,0.12)', borderRadius: '0 0 20px 20px', margin: '0' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
           {/* Logo */}
           <div style={{ width: 'min(110px, 26vw)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -553,7 +668,7 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
               {isStarted && (
                 <button
                   onClick={() => setShowQR(true)}
-                  style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 10px', borderRadius: 'var(--radius-full)', border: '2px solid var(--accent-magenta)', background: 'rgba(224, 64, 251, 0.1)', color: 'var(--accent-magenta)', fontSize: '0.7rem', whiteSpace: 'nowrap', fontWeight: 800, boxShadow: '0 2px 8px rgba(224, 64, 251, 0.2)', minWidth: 'unset', minHeight: 'unset' }}
+                  style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 10px', borderRadius: 'var(--radius-full)', border: '2px solid rgba(255,200,0,0.5)', background: 'rgba(255,200,0,0.1)', color: '#FFE600', fontSize: '0.7rem', whiteSpace: 'nowrap', fontWeight: 800, boxShadow: '0 2px 8px rgba(255,200,0,0.15)', minWidth: 'unset', minHeight: 'unset' }}
                 >
                   📱 {roomId}
                 </button>
@@ -609,8 +724,8 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
       />
 
       {/* Floating Modes (Pushed below header) */}
-      <div style={{ position: 'absolute', top: 'clamp(95px, 20vmin, 155px)', left: 0, right: 0, zIndex: 15, display: 'flex', justifyContent: 'center' }}>
-        <div className="glass-overlay" style={{ padding: '6px 8px', borderRadius: 'var(--radius-full)' }}>
+      <div style={{ position: 'absolute', top: 'clamp(85px, 20vmin, 145px)', left: 0, right: 0, zIndex: 15, display: 'flex', justifyContent: 'center' }}>
+        <div style={{ background: 'rgba(22, 4, 4, 0.78)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', border: '1px solid rgba(255,180,0,0.18)', borderRadius: 'var(--radius-full)', padding: '5px 8px', boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
           <ModeSelector activeMode={activeMode} onModeChange={setActiveMode} />
         </div>
       </div>
@@ -712,6 +827,15 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
       {/* Floating Action Buttons */}
       {isStarted && (
         <div style={{ position: 'absolute', bottom: '24px', left: '16px', display: 'flex', flexDirection: 'column', gap: '12px', zIndex: 60, alignItems: 'center' }}>
+          {/* Mic Mute Button */}
+          <button
+            onClick={toggleMicMute}
+            className={`mic-mute-btn${isMicMuted ? ' muted' : ''}`}
+            title={isMicMuted ? 'Unmute' : 'Mute Mic'}
+            aria-label={isMicMuted ? 'Unmute microphone' : 'Mute microphone'}
+          >
+            {isMicMuted ? '🔇' : '🎤'}
+          </button>
           {/* Manual Memory Capture Button */}
           <button
             onClick={() => handleCreateMemory({ type: 'moment', title: 'Captured Memory', content: 'Manually saved by you.' })}
@@ -750,14 +874,14 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
                 width: '60px',
                 height: '60px',
                 borderRadius: '16px',
-                background: 'linear-gradient(145deg, #00C8FF, #0080FF)',
-                border: '2px solid rgba(0, 200, 255, 0.5)',
+                background: 'linear-gradient(145deg, #FF8C00, #CC1010)',
+                border: '2px solid rgba(255, 140, 0, 0.5)',
                 color: '#fff',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 cursor: 'pointer',
-                boxShadow: '0 6px 20px rgba(0, 128, 255, 0.55)',
+                boxShadow: '0 6px 20px rgba(204, 16, 16, 0.5)',
                 transition: 'transform 0.1s ease-in-out',
                 fontSize: '1.5rem',
               }}
@@ -779,14 +903,14 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
                 width: '60px',
                 height: '60px',
                 borderRadius: '16px',
-                background: 'linear-gradient(145deg, #5B00C8, #9D00FF)',
-                border: '2px solid rgba(200, 100, 255, 0.5)',
-                color: '#fff',
+                background: 'linear-gradient(145deg, #8B0000, #CC1010)',
+                border: '2px solid rgba(255, 80, 0, 0.5)',
+                color: '#FFE600',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 cursor: 'pointer',
-                boxShadow: '0 6px 20px rgba(157, 0, 255, 0.55)',
+                boxShadow: '0 6px 20px rgba(180, 10, 10, 0.6)',
                 transition: 'transform 0.1s ease-in-out',
               }}
               aria-label="Toggle CruiseHQ Chat"
@@ -799,7 +923,7 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
                 <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
               </svg>
             </button>
-            <span style={{ fontSize: '0.6rem', fontWeight: 900, color: '#1a0040', textTransform: 'uppercase', letterSpacing: '0.05em', textShadow: '0 1px 2px rgba(255,255,255,0.3)' }}>CREW</span>
+            <span style={{ fontSize: '0.6rem', fontWeight: 900, color: '#FFE600', textTransform: 'uppercase', letterSpacing: '0.05em', textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>CREW</span>
           </div>
 
           {/* TCG AI Text Chat Button — distinctly branded with TCG label */}
@@ -810,8 +934,8 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
                 width: '60px',
                 height: '60px',
                 borderRadius: '16px',
-                background: showTranscript ? 'linear-gradient(145deg, #1a0040, #3a0080)' : 'linear-gradient(145deg, #1a0040, #3a0080)',
-                border: showTranscript ? '2px solid #FFE600' : '2px solid rgba(255, 230, 0, 0.5)',
+                background: showTranscript ? 'linear-gradient(145deg, #8B0000, #CC1010)' : 'linear-gradient(145deg, #5A0000, #8B0000)',
+                border: showTranscript ? '2px solid #FFE600' : '2px solid rgba(255, 150, 0, 0.5)',
                 color: '#FFE600',
                 display: 'flex',
                 flexDirection: 'column',
@@ -834,7 +958,7 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
               )}
               <span style={{ fontSize: '0.55rem', fontWeight: 900, letterSpacing: '0.04em' }}>TCG</span>
             </button>
-            <span style={{ fontSize: '0.6rem', fontWeight: 900, color: '#1a0040', textTransform: 'uppercase', letterSpacing: '0.05em', textShadow: '0 1px 2px rgba(255,255,255,0.3)' }}>CHAT</span>
+            <span style={{ fontSize: '0.6rem', fontWeight: 900, color: '#FFE600', textTransform: 'uppercase', letterSpacing: '0.05em', textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>CHAT</span>
           </div>
         </div>
       )}

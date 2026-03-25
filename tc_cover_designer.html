@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>TCG Cover Designer</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            width: 1920px;
+            height: 1080px;
+            background: #FFE600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            font-family: 'Inter', -apple-system, sans-serif;
+            overflow: hidden;
+        }
+
+        .wave {
+            position: absolute;
+            bottom: -30%;
+            left: -10%;
+            width: 120%;
+            height: 80%;
+            background: radial-gradient(ellipse at bottom center, rgba(157, 0, 255, 0.6) 0%, rgba(157, 0, 255, 0) 70%);
+            z-index: 1;
+            filter: blur(50px);
+        }
+
+        .image-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .cover {
+            max-width: 1100px;
+            max-height: 800px;
+            mix-blend-mode: multiply;
+            /* Using standard margin based positioning instead of z-index */
+        }
+
+        .btn {
+            position: absolute;
+            background: rgba(22, 4, 4, 0.9);
+            color: white;
+            padding: 24px 40px;
+            border-radius: 50px;
+            font-size: 28px;
+            font-weight: 800;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            z-index: 20;
+            backdrop-filter: blur(14px);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-room {
+            top: 60px;
+            left: 60px;
+            background: rgba(255, 200, 0, 0.1);
+            color: #111;
+            border: 3px solid rgba(17, 17, 17, 0.8);
+            font-size: 32px;
+        }
+
+        .btn-game { border-color: rgba(255, 42, 42, 0.5); top: 15%; right: 10%; transform: rotate(4deg); }
+        .btn-locator { border-color: rgba(0, 240, 255, 0.5); bottom: 15%; left: 8%; transform: rotate(-5deg); }
+        .btn-plug { border-color: rgba(157, 0, 255, 0.5); bottom: 25%; right: 12%; transform: rotate(-3deg); }
+        .btn-tools { border-color: rgba(255, 200, 0, 0.5); top: 35%; left: 10%; transform: rotate(6deg); }
+
+        .aura-circle {
+            position: absolute;
+            width: 800px;
+            height: 800px;
+            background: radial-gradient(circle, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0) 60%);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 2;
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="wave"></div>
+    <div class="aura-circle"></div>
+    
+    <div class="btn btn-room">📱 CRUISEHQ: XK9D</div>
+    <div class="btn btn-tools">🎲 Randomizer</div>
+    <div class="btn btn-locator">📍 Locator</div>
+    <div class="btn btn-plug">🔌 The Plug</div>
+    <div class="btn btn-game">🎮 Game Master</div>
+
+    <div class="image-container">
+        <!-- Path relative to the working directory it gets opened from -->
+        <img src="app/public/cover.png" class="cover" alt="TCG" />
+    </div>
+</body>
+</html>
