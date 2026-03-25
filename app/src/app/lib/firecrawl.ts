@@ -82,22 +82,82 @@ function formatResults(type: SearchType, webResults: Array<Record<string, unknow
 }
 
 import { Redis } from '@upstash/redis'
+import { createClient } from '@supabase/supabase-js'
 
-const CACHE_TTL_SECONDS = 60 * 15; // 15 minutes
+const CACHE_TTL_SECONDS = 60 * 15; // 15 minutes temp cache for Redis fallback
 
 const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL!,
   token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-})
+});
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY! // Or service key if bypassing RLS
+);
 
 export async function performFirecrawlSearch(req: SearchRequest): Promise<UnifiedSearchResponse> {
   const { query, type = 'locations' } = req;
-  const cacheKey = `tcg:${type}:${query}:${req.location || ''}`;
+  const searchQuery = buildSearchQuery(req);
+  const locationKey = req.location?.trim().toLowerCase() || null;
+  const queryKey = searchQuery.trim().toLowerCase();
 
-  // Check cache
+  const tableName = type === 'games' ? 'tcg_games' : type === 'locations' ? 'tcg_locations' : 'tcg_plugs';
+
+  try {
+    // 1. Check Persistent Database (Supabase) FIRST
+    let dbQuery = supabase.from(tableName).select('*').eq('query_key', queryKey);
+    if (locationKey && type !== 'games') {
+      dbQuery = dbQuery.eq('location_key', locationKey);
+    }
+    
+    const { data: dbMatches, error: dbError } = await dbQuery.limit(5);
+
+    if (!dbError && dbMatches && dbMatches.length > 0) {
+      // TTL Check: 7 days for locations/plugs
+      if (type !== 'games' && dbMatches[0].created_at) {
+        const ageMs = Date.now() - new Date(dbMatches[0].created_at).getTime();
+        const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+        if (ageMs > SEVEN_DAYS_MS) {
+          console.log(`[TCG Search] ⚠️ Stale data (>7 days) for: ${queryKey}. Triggering re-scrape.`);
+          await supabase.from(tableName).delete().eq('query_key', queryKey);
+          throw new Error('stale_cache'); // Fall through to Redis / Firecrawl
+        }
+      }
+
+      console.log(`[TCG Search] ✨ Supabase Permanent DB hit for: ${queryKey}`);
+      
+      const results: SearchResult[] = dbMatches.map((row, idx) => {
+        const base: SearchResult = {
+          position: idx + 1,
+          title: row.title,
+          url: row.url || '',
+          description: row.description || '',
+        };
+        if (type === 'games') {
+          return { ...base, name: row.title, rules_content: row.rules_content || '' };
+        }
+        return base;
+      });
+
+      return {
+        success: true,
+        results,
+        count: results.length,
+        type,
+        query: searchQuery,
+        from_cache: true // signals it was fast/free
+      };
+    }
+  } catch (err) {
+    console.warn('[TCG Search] DB check failed, falling back to network:', err);
+  }
+
+  // 2. Temp Redis cache check (if DB missed or failed)
+  const cacheKey = `tcg:${type}:${query}:${req.location || ''}`;
   const cached = await redis.get<UnifiedSearchResponse>(cacheKey);
   if (cached) {
-    console.log(`[TCG Search] Upstash Cache hit for: ${cacheKey}`);
+    console.log(`[TCG Search] Redis Cache hit for: ${cacheKey}`);
     return { ...cached, from_cache: true };
   }
 
@@ -107,7 +167,6 @@ export async function performFirecrawlSearch(req: SearchRequest): Promise<Unifie
     return { success: false, query, type, results: [], error: 'Search engine not configured' };
   }
 
-  const searchQuery = buildSearchQuery(req);
   const payload = buildFirecrawlPayload(req, searchQuery);
   const timeoutMs = type === 'games' ? 20000 : 15000;
   
@@ -167,7 +226,39 @@ export async function performFirecrawlSearch(req: SearchRequest): Promise<Unifie
       query: searchQuery,
     };
 
-    // Store in Upstash Redis cache (15 min TTL)
+    // Store in Persistent Database IN BACKGROUND
+    (async () => {
+      try {
+        const insertData = results.map(r => {
+          if (type === 'games') {
+            return {
+              query_key: queryKey,
+              title: r.title || r.name,
+              description: r.description,
+              url: r.url,
+              rules_content: r.rules_content
+            };
+          }
+          return {
+            query_key: queryKey,
+            location_key: locationKey,
+            title: r.title,
+            description: r.description,
+            url: r.url
+          };
+        });
+
+        if (insertData.length > 0) {
+          const { error } = await supabase.from(tableName).insert(insertData);
+          if (error) console.error(`[DB Insert Error] ${tableName}:`, error);
+          else console.log(`[DB Insert] Saved ${insertData.length} records to ${tableName}`);
+        }
+      } catch (err) {
+        console.error('[DB Insert Catch Error]:', err);
+      }
+    })();
+
+    // Store in Upstash Redis cache (15 min TTL) as secondary
     await redis.setex(cacheKey, CACHE_TTL_SECONDS, finalResponse);
 
     return finalResponse;

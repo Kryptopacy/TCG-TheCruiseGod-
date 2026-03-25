@@ -17,6 +17,8 @@ export default function GuestRoom({ params }: { params: Promise<{ id: string }> 
   const [isCoHost, setIsCoHost] = useState(false);
   const [isRequestingCoHost, setIsRequestingCoHost] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [hasJoined, setHasJoined] = useState(false);
+  const [activeGuests, setActiveGuests] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
   
@@ -24,20 +26,32 @@ export default function GuestRoom({ params }: { params: Promise<{ id: string }> 
   const channelRef = useRef<ReturnType<typeof supabase.current.channel> | null>(null);
 
   useEffect(() => {
-    // Attempt to recover saved author name
-    const savedName = localStorage.getItem('tcg_guestName');
-    if (savedName) setAuthor(savedName);
+    // Attempt to recover saved author name or fetch Supabase Auth name for autofill
+    const loadIdentity = async () => {
+      const savedName = localStorage.getItem('tcg_guestName');
+      const { data: { user } } = await supabase.current.auth.getUser();
+      if (user?.user_metadata?.display_name) {
+        setAuthor(user.user_metadata.display_name);
+      } else if (savedName) {
+        setAuthor(savedName);
+      }
+    };
+    loadIdentity();
 
     // Initialize Supabase specific room channel
     const channel = supabase.current.channel(`room:${roomId}`);
     channelRef.current = channel;
 
+    channel.on('presence', { event: 'sync' }, () => {
+      const state = channel.presenceState();
+      const guests = Object.values(state).flatMap(p => p).map((p: any) => p.cruiseId as string).filter(Boolean);
+      setActiveGuests(guests);
+    });
+
     channel.subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
         console.log(`Connected to room:${roomId}`);
         setConnected(true);
-        // Track presence immediately
-        await channel.track({ cruiseId: savedName || 'Cruiser' });
       } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
         setConnected(false);
       }
@@ -57,6 +71,23 @@ export default function GuestRoom({ params }: { params: Promise<{ id: string }> 
       if (recognitionRef.current) recognitionRef.current.stop();
     };
   }, [roomId]);
+
+  const handleJoin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = author.trim() || 'Cruiser';
+
+    // FCFS Check: Is this name already in the room?
+    if (activeGuests.includes(name)) {
+      alert("This CruiseID is already active in the room! Please choose another.");
+      return;
+    }
+
+    if (channelRef.current && connected) {
+      await channelRef.current.track({ cruiseId: name });
+      setHasJoined(true);
+      localStorage.setItem('tcg_guestName', name);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -219,6 +250,22 @@ export default function GuestRoom({ params }: { params: Promise<{ id: string }> 
           </p>
         </div>
 
+        {!hasJoined ? (
+          <form onSubmit={handleJoin} style={{ display: 'flex', flexDirection: 'column', gap: '16px', background: 'rgba(255,255,255,0.03)', padding: '24px', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <label style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', fontWeight: 700, textTransform: 'uppercase' }}>Set Your CruiseID</label>
+            <input
+              type="text"
+              value={author}
+              onChange={(e) => setAuthor(e.target.value)}
+              placeholder="e.g. Maverick"
+              required
+              style={{ width: '100%', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '16px', color: '#fff', fontSize: '1rem', outline: 'none' }}
+            />
+            <button type="submit" disabled={!connected} style={{ background: connected ? '#FFE600' : 'rgba(255,255,255,0.1)', color: connected ? '#000' : 'rgba(255,255,255,0.3)', border: 'none', padding: '16px', borderRadius: '12px', fontWeight: 900, cursor: connected ? 'pointer' : 'not-allowed', transition: 'all 0.2s', boxShadow: connected ? '0 10px 30px rgba(255,230,0,0.3)' : 'none' }}>
+              {connected ? 'JOIN ROOM' : 'CONNECTING...'}
+            </button>
+          </form>
+        ) : (
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           {/* Action Type Selector */}
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -250,20 +297,9 @@ export default function GuestRoom({ params }: { params: Promise<{ id: string }> 
 
           {/* Inputs */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', background: 'rgba(255,255,255,0.03)', padding: '24px', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', fontWeight: 700, textTransform: 'uppercase' }}>Cruise ID (Your Name)</label>
-              <input
-                type="text"
-                value={author}
-                onChange={(e) => setAuthor(e.target.value)}
-                onBlur={() => {
-                  if (connected && channelRef.current) {
-                     channelRef.current.track({ cruiseId: author || 'Cruiser' });
-                  }
-                }}
-                placeholder="Stay Anonymous, or type a name..."
-                style={{ width: '100%', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '16px', color: '#fff', fontSize: '1rem', outline: 'none' }}
-              />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <label style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', fontWeight: 700, textTransform: 'uppercase' }}>Playing as</label>
+              <span style={{ fontSize: '0.8rem', color: '#FFE600', fontWeight: 800 }}>{author || 'Anonymous'}</span>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -359,6 +395,7 @@ export default function GuestRoom({ params }: { params: Promise<{ id: string }> 
             </AnimatePresence>
           </div>
         </form>
+        )}
 
         <style jsx global>{`
           @keyframes pulse-red {

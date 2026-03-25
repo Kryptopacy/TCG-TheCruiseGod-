@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 // ─── Types & Helpers ────────────────────────────────────────────────────────
 
-type Tool = 'home' | 'coin' | 'dice' | 'bottle' | 'randomizer' | 'timer' | 'bill' | 'truth' | 'scoreboard';
+type Tool = 'home' | 'coin' | 'dice' | 'bottle' | 'randomizer' | 'timer' | 'bill' | 'truth' | 'scoreboard' | 'charades';
 
 function randomInt(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -113,12 +113,12 @@ function DiceRoll() {
 
 // 3. Spin the Bottle
 function SpinBottle({ activeGuests = [] }: { activeGuests?: string[] }) {
-  const defaultPlayers = activeGuests.length >= 2 ? activeGuests : ['Alex', 'Blake', 'Casey', 'Dana'];
+  const defaultPlayers = activeGuests.length >= 2 ? activeGuests.slice(0, 8) : ['Alex', 'Blake', 'Casey', 'Dana'];
   const [players, setPlayers] = useState<string[]>(defaultPlayers);
 
-  // Sync when guests join the room after mount
+  // Sync when guests join the room after mount (cap at 8)
   useEffect(() => {
-    if (activeGuests.length >= 2) setPlayers(activeGuests);
+    if (activeGuests.length >= 2) setPlayers(activeGuests.slice(0, 8));
   }, [activeGuests.join(',')]);
   const [newPlayer, setNewPlayer] = useState('');
   const [spinning, setSpinning] = useState(false);
@@ -128,6 +128,10 @@ function SpinBottle({ activeGuests = [] }: { activeGuests?: string[] }) {
   const addPlayer = () => {
     const name = newPlayer.trim();
     if (name && !players.includes(name)) {
+      if (players.length >= 8) {
+        alert('Max 8 players for Spin the Bottle! Use the Randomizer for larger groups.');
+        return;
+      }
       setPlayers(p => [...p, name]);
       setNewPlayer('');
     }
@@ -151,6 +155,11 @@ function SpinBottle({ activeGuests = [] }: { activeGuests?: string[] }) {
   return (
     <div style={toolContainer}>
       <h2 style={toolTitle}>🍾 Spin the Bottle</h2>
+      {activeGuests.length > 8 && (
+        <p style={{ color: '#FF2A2A', fontSize: '0.8rem', fontWeight: 800, textAlign: 'center', margin: '0 0 16px', background: 'rgba(255,42,42,0.1)', padding: '8px 12px', borderRadius: '12px' }}>
+          ⚠️ Room too large for bottle spin. Only first 8 guests added. Use Randomizer instead!
+        </p>
+      )}
       <div style={{ position: 'relative', width: '200px', height: '200px', margin: '0 auto 16px', cursor: 'pointer' }} onClick={spin}>
         <svg width="200" height="200" viewBox="-100 -100 200 200">
           {players.map((p, i) => {
@@ -177,10 +186,10 @@ function SpinBottle({ activeGuests = [] }: { activeGuests?: string[] }) {
       {selected && <p style={{ color: '#FFE600', fontWeight: 900, fontSize: '1.5rem', marginBottom: '12px', animation: 'slide-down-toast 0.4s' }}>👉 {selected}!</p>}
       {activeGuests.length >= 2 && (
         <button
-          onClick={() => setPlayers(activeGuests)}
+          onClick={() => setPlayers(activeGuests.slice(0, 8))}
           style={{ ...actionBtn, background: 'rgba(0,229,255,0.15)', color: 'var(--accent-cyan, #00e5ff)', border: '1px solid rgba(0,229,255,0.4)', boxShadow: 'none', padding: '10px 20px', fontSize: '0.8rem', marginBottom: '12px' }}
         >
-          👥 RELOAD FROM ROOM ({activeGuests.length})
+          👥 RELOAD FROM ROOM (MAX 8)
         </button>
       )}
       <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '12px', width: '100%', maxWidth: '300px' }}>
@@ -231,8 +240,19 @@ function Randomizer({ activeGuests = [], groups = {} }: { activeGuests?: string[
   return (
     <div style={toolContainer}>
       <h2 style={toolTitle}>🎯 Randomizer</h2>
-      <div style={{ background: result ? 'rgba(255,230,0,0.12)' : 'rgba(255,255,255,0.05)', border: `2px solid ${result && !picking ? '#FFE600' : 'rgba(255,255,255,0.1)'}`, borderRadius: '16px', padding: '24px', minHeight: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px', width: '100%', maxWidth: '300px', transition: 'all 0.2s' }}>
-        <p style={{ color: result ? '#FFE600' : 'rgba(255,255,255,0.4)', fontSize: '1.6rem', fontWeight: 900, margin: 0 }}>{result ?? 'Add choices below'}</p>
+      <div style={{ background: result || picking ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.05)', border: `2px solid ${result && !picking ? '#FFE600' : 'rgba(255,255,255,0.1)'}`, borderRadius: '16px', padding: '24px', minHeight: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px', width: '100%', maxWidth: '300px', transition: 'all 0.2s', overflow: 'hidden' }}>
+        <p style={{ 
+          color: result && !picking ? '#FFE600' : picking ? '#fff' : 'rgba(255,255,255,0.4)', 
+          fontSize: picking ? '2.5rem' : result ? '1.8rem' : '1.2rem', 
+          fontWeight: 900, 
+          margin: 0,
+          transition: 'all 0.1s ease-out',
+          textShadow: picking ? '0 0 20px rgba(255,255,255,0.8)' : result ? '0 0 15px rgba(255,230,0,0.4)' : 'none',
+          transform: picking ? 'scale(1.1)' : 'scale(1)',
+          textAlign: 'center'
+        }}>
+          {result ?? 'Add choices below'}
+        </p>
       </div>
       {(activeGuests.length > 0 || Object.keys(groups).length > 0) && (
         <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap', justifyContent: 'center', width: '100%', maxWidth: '300px' }}>
@@ -491,6 +511,62 @@ function TruthOrDare() {
   );
 }
 
+// 7.5 Charades Generator
+const charadesWords = {
+  movies: ['The Matrix', 'Titanic', 'Jurassic Park', 'Inception', 'Star Wars', 'Jaws', 'The Lion King', 'Forrest Gump', 'Avatar', 'Gladiator'],
+  actions: ['Surfing', 'Baking a cake', 'Riding a horse', 'Playing tennis', 'Changing a diaper', 'Walking a dog', 'Mowing the lawn', 'Parallel parking', 'Juggling', 'Sneezing'],
+  objects: ['Washing machine', 'Typewriter', 'Helicopter', 'Toothbrush', 'Coffee maker', 'Vacuum cleaner', 'Chainsaw', 'Binoculars', 'Lawnmower', 'Trombone'],
+  hardcore: ['Schadenfreude', 'Existential crisis', 'Quantum physics', 'Procrastination', 'Déjà vu', 'Wi-Fi randomly disconnecting', 'Brain freeze', 'Impulse buying', 'Sleep paralysis', 'Auto-correct'],
+};
+
+function CharadesGenerator() {
+  const [word, setWord] = useState('');
+  const [category, setCategory] = useState<'movies' | 'actions' | 'objects' | 'hardcore'>('movies');
+
+  const generateWord = () => {
+    const pool = charadesWords[category];
+    const newWord = pool[randomInt(0, pool.length - 1)];
+    // Prevent immediate back-to-back duplicates if possible
+    if (newWord === word && pool.length > 1) {
+      generateWord();
+    } else {
+      setWord(newWord);
+    }
+  };
+
+  return (
+    <div style={toolContainer}>
+      <h2 style={toolTitle}>🎭 Charades</h2>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', background: 'rgba(255,255,255,0.06)', borderRadius: '24px', padding: '8px', marginBottom: '20px', width: '100%', maxWidth: '320px', justifyContent: 'center' }}>
+        {(['movies', 'actions', 'objects', 'hardcore'] as const).map(c => (
+          <button
+            key={c}
+            onClick={() => { setCategory(c); setWord(''); }}
+            style={{ padding: '8px 16px', borderRadius: '16px', border: 'none', background: category === c ? '#FFE600' : 'transparent', color: category === c ? '#000' : 'rgba(255,255,255,0.5)', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', transition: 'all 0.2s', textTransform: 'capitalize' }}
+          >
+            {c}
+          </button>
+        ))}
+      </div>
+      
+      {word ? (
+        <div style={{ background: 'rgba(255,42,42,0.1)', border: '2px solid rgba(255,42,42,0.5)', borderRadius: '20px', padding: '32px 24px', marginBottom: '20px', width: '100%', maxWidth: '320px', textAlign: 'center' }}>
+          <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', fontWeight: 900, letterSpacing: '2px', marginBottom: '12px', textTransform: 'uppercase' }}>{category}</p>
+          <p style={{ color: '#fff', fontSize: '1.6rem', lineHeight: 1.2, margin: 0, fontWeight: 900 }}>{word}</p>
+        </div>
+      ) : (
+        <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '20px', padding: '40px 24px', marginBottom: '20px', width: '100%', maxWidth: '320px', textAlign: 'center' }}>
+          <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '1rem', margin: 0 }}>Select a category and hit generate</p>
+        </div>
+      )}
+      
+      <button style={actionBtn} onClick={generateWord}>
+        {word ? 'NEXT WORD' : 'GENERATE'}
+      </button>
+    </div>
+  );
+}
+
 // 8. Scoreboard
 function Scoreboard({ activeGuests = [] }: { activeGuests?: string[] }) {
   const defaultPlayers = activeGuests.length > 0
@@ -558,6 +634,7 @@ const toolList: { id: Tool; label: string; icon: string; color: string }[] = [
   { id: 'randomizer', label: 'Randomizer', icon: '🎯', color: 'rgba(0,229,255,0.12)' },
   { id: 'timer', label: 'Timer / Watch', icon: '⏱', color: 'rgba(248,0,177,0.12)' },
   { id: 'bill', label: 'Bill Splitter', icon: '💰', color: 'rgba(0,200,100,0.12)' },
+  { id: 'charades', label: 'Charades', icon: '🎭', color: 'rgba(255,42,42,0.12)' },
   { id: 'truth', label: 'Truth or Dare', icon: '🃏', color: 'rgba(180,0,255,0.12)' },
   { id: 'scoreboard', label: 'Scoreboard', icon: '🏆', color: 'rgba(255,200,0,0.12)' },
 ];
@@ -651,6 +728,7 @@ export default function ToolsPanel({ activeTool: externalTool, activeGuests = []
         {activeTool === 'randomizer' && <Randomizer activeGuests={activeGuests} groups={groups} />}
         {activeTool === 'timer' && <TimerTool />}
         {activeTool === 'bill' && <BillSplitter />}
+        {activeTool === 'charades' && <CharadesGenerator />}
         {activeTool === 'truth' && <TruthOrDare />}
         {activeTool === 'scoreboard' && <Scoreboard activeGuests={activeGuests} />}
       </div>

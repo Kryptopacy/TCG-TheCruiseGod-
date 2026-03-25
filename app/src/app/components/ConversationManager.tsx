@@ -4,6 +4,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useConversation } from '@elevenlabs/react';
 import VoiceButton from './VoiceButton';
 import ChatFallback from './ChatFallback';
+import CruiseHQ from './CruiseHQ';
 import ModeSelector, { TCGMode } from './ModeSelector';
 import GameSession from './GameSession';
 import WaveformVisualizer from './WaveformVisualizer';
@@ -15,7 +16,9 @@ import { useDeviceLocation } from '@/app/hooks/useDeviceLocation';
 import { Memory } from '@/app/types/sharing';
 import { AnimatePresence, motion } from 'framer-motion';
 import ToolsPanel from './ToolsPanel';
+import CameraCapture, { VisionTask } from './CameraCapture';
 import { createClient } from '@/utils/supabase/client';
+import SettingsModal from './SettingsModal';
 
 interface Message {
   id: string;
@@ -39,19 +42,29 @@ export default function ConversationManager() {
   // UX Overhaul States
   const [isStarted, setIsStarted] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
+  const [showCruiseHQ, setShowCruiseHQ] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [userName, setUserName] = useState<string>('');
   const [wingmanPreferences, setWingmanPreferences] = useState<string>('');
+
 
   // CruiseHQ (Multiplayer) States
   const [roomId, setRoomId] = useState<string>('');
   const [showQR, setShowQR] = useState(false);
   const [activeGuests, setActiveGuests] = useState<string[]>([]);
+  const activeGuestsRef = useRef<string[]>([]); // live ref so client tool handlers always see current guests
   const [pushedImage, setPushedImage] = useState<string | null>(null);
   const [cohostRequests, setCohostRequests] = useState<string[]>([]);
   const [groups, setGroups] = useState<Record<string, string[]>>({});
   const [showGroupsModal, setShowGroupsModal] = useState(false);
   const supabase = useRef(createClient());
   const roomChannelRef = useRef<ReturnType<typeof supabase.current.channel> | null>(null);
+  const conversationRef = useRef<typeof conversation | null>(null);
+
+  // Vision / Camera States
+  const [showCamera, setShowCamera] = useState(false);
+  const [cameraTask, setCameraTask] = useState<VisionTask>('general');
+  const [cameraPrompt, setCameraPrompt] = useState<string | undefined>(undefined);
   
   const messageIdCounter = useRef(0);
 
@@ -60,19 +73,29 @@ export default function ConversationManager() {
     const loadProfile = async () => {
       try {
         const { data: { user } } = await supabase.current.auth.getUser();
+        let nameToSet = '';
+        let agentToSet = '';
+        
         if (user) {
-          const name = user.user_metadata?.display_name || localStorage.getItem('tcg_userName') || '';
+          nameToSet = user.user_metadata?.display_name || localStorage.getItem('tcg_userName') || '';
+          agentToSet = user.user_metadata?.agent_id || localStorage.getItem('tcg_agentId') || VOICES[0]?.id || '';
           const prefs = user.user_metadata?.wingman_preferences || '';
-          setUserName(name);
           setWingmanPreferences(prefs);
-          if (name) localStorage.setItem('tcg_userName', name);
+          
+          if (nameToSet) localStorage.setItem('tcg_userName', nameToSet);
+          if (agentToSet) localStorage.setItem('tcg_agentId', agentToSet);
         } else {
-          const savedName = localStorage.getItem('tcg_userName');
-          if (savedName) setUserName(savedName);
+          nameToSet = localStorage.getItem('tcg_userName') || '';
+          agentToSet = localStorage.getItem('tcg_agentId') || VOICES[0]?.id || '';
         }
+        
+        setUserName(nameToSet);
+        setAgentId(agentToSet);
       } catch {
-        const savedName = localStorage.getItem('tcg_userName');
-        if (savedName) setUserName(savedName);
+        const savedName = localStorage.getItem('tcg_userName') || '';
+        const savedAgent = localStorage.getItem('tcg_agentId') || VOICES[0]?.id || '';
+        setUserName(savedName);
+        setAgentId(savedAgent);
       }
     };
     loadProfile();
@@ -100,6 +123,11 @@ export default function ConversationManager() {
     return msg;
   }, []);
 
+  // Keep activeGuestsRef in sync with state so client-tool handlers always have live data
+  useEffect(() => {
+    activeGuestsRef.current = activeGuests;
+  }, [activeGuests]);
+
   useEffect(() => {
     // Generate Room ID once
     const newRoomId = Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -113,7 +141,27 @@ export default function ConversationManager() {
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState();
         const guests = Object.values(state).flatMap(p => p).map((p: any) => p.cruiseId as string).filter(Boolean);
-        setActiveGuests([...new Set(guests)]);
+        const uniqueGuests = [...new Set(guests)];
+        const prev = activeGuestsRef.current;
+
+        // Detect joins and leaves for real-time agent awareness
+        const joined = uniqueGuests.filter(g => !prev.includes(g));
+        const left = prev.filter(g => !uniqueGuests.includes(g));
+
+        setActiveGuests(uniqueGuests);
+
+        joined.forEach(g => {
+          addMessage('system', `👋 ${g} joined CruiseHQ! (${uniqueGuests.length} total)`);
+          // Let the live agent know so it can acknowledge
+          if (conversationRef.current?.status === 'connected') {
+            conversationRef.current.sendUserMessage(
+              `[SYSTEM] New guest joined: ${g}. Active guests are now: ${uniqueGuests.join(', ')} (${uniqueGuests.length} total).`
+            );
+          }
+        });
+        left.forEach(g => {
+          addMessage('system', `🚶 ${g} left the room. (${uniqueGuests.length} remaining)`);
+        });
       })
       .on('broadcast', { event: 'guest_action' }, (payload) => {
         // Inject guest actions dynamically into the transcript.
@@ -133,6 +181,18 @@ export default function ConversationManager() {
           addMessage('system', `📬 ${author || 'Guest'} says: "${content}"`, { image });
         }
       })
+      .on('broadcast', { event: 'room_chat' }, (payload) => {
+        const msg = payload.payload;
+        // If someone @tags TCG in the room chat, forward it to the Agent
+        if (msg.text && (msg.text.includes('@TCG') || msg.text.includes('@tcg'))) {
+          if (conversationRef.current?.status === 'connected') {
+            const groupName = msg.groupId === 'main' ? 'the Main Room' : `Group ${msg.groupId}`;
+            conversationRef.current.sendUserMessage(
+              `[From ${msg.sender} in ${groupName}]: ${msg.text}`
+            );
+          }
+        }
+      })
       .on('broadcast', { event: 'cohost_request' }, (payload) => {
         const { cruiseId } = payload.payload;
         setCohostRequests(prev => [...new Set([...prev, cruiseId])]);
@@ -141,9 +201,9 @@ export default function ConversationManager() {
       .on('broadcast', { event: 'cohost_voice' }, (payload) => {
         const { transcript, author } = payload.payload;
         addMessage('user', `🎙️ [Remote Mic] ${author}: ${transcript}`);
-        // Inject the co-host transcript into the live ElevenLabs session
-        if (conversation.status === 'connected') {
-          conversation.sendUserMessage(transcript);
+        // Inject the co-host transcript into the live ElevenLabs session via ref
+        if (conversationRef.current?.status === 'connected') {
+          conversationRef.current.sendUserMessage(transcript);
         }
       })
       .subscribe((status) => {
@@ -178,9 +238,15 @@ export default function ConversationManager() {
     },
   });
 
+  // Keep conversationRef current so presence handler can reach the live session
+  useEffect(() => {
+    conversationRef.current = conversation;
+  });
+
   // Client tool handlers
   const handleCreateMemory = useCallback((params: Record<string, unknown>) => {
     const momentId = `share-${Date.now()}`;
+    const shareCaption = params.shareCaption as string | undefined;
     const moment: Memory = {
       id: momentId,
       type: (params.type as Memory['type']) || 'moment',
@@ -196,11 +262,19 @@ export default function ConversationManager() {
     // Background process for capture & save
     (async () => {
       const imageUrl = await captureAndUpload(momentId);
-      await db.saveTrophy({ ...moment, image_url: imageUrl || null });
+      await db.saveTrophy({
+        ...moment,
+        image_url: imageUrl || null,
+        ...(shareCaption ? { share_caption: shareCaption } : {}),
+      });
     })();
 
-    return 'Memory saved to your Trophy Room!';
-  }, [activeMode, captureAndUpload]);
+    if (shareCaption) {
+      addMessage('system', `📸 Memory saved! Caption: "${shareCaption}"`);
+    }
+
+    return 'Memory saved to Trophy Room!';
+  }, [activeMode, captureAndUpload, addMessage]);
 
   const handleSwitchMode = useCallback((params: Record<string, unknown>) => {
     const mode = params.mode as TCGMode;
@@ -241,15 +315,57 @@ export default function ConversationManager() {
   }, []);
 
   const handleDisplayResults = useCallback((params: Record<string, unknown>) => {
+    // Agent may send results as a JSON string (since ElevenLabs params are strings)
+    let results: SearchResult[] = [];
+    if (typeof params.results === 'string') {
+      try { results = JSON.parse(params.results); } catch { results = []; }
+    } else if (Array.isArray(params.results)) {
+      results = params.results as SearchResult[];
+    }
     setCurrentResults({
       success: true,
-      results: (params.results as SearchResult[]) || [],
+      results,
       type: (params.type as UnifiedSearchResponse['type']) || 'locations',
       query: (params.query as string) || '',
-      count: Array.isArray(params.results) ? params.results.length : 0,
+      count: results.length,
     });
     return 'Results displayed in UI';
   }, []);
+
+  // ─── New Voice-Control Handlers ──────────────────────────────────────────────
+
+  const handleShowQR = useCallback(() => {
+    setShowQR(true);
+    return 'CruiseHQ QR code is now visible.';
+  }, []);
+
+  const handleRandomizeGroupsTool = useCallback((params: Record<string, unknown>) => {
+    const numGroups = Math.max(2, Number(params.numGroups) || 2);
+    if (activeGuests.length < 2) return 'Not enough guests in the room to split into groups.';
+    handleRandomizeGroups(numGroups);
+    return `Split ${activeGuests.length} guests into ${numGroups} groups!`;
+  }, [activeGuests]);
+
+  const handleAnalyzeImage = useCallback((params: Record<string, unknown>) => {
+    const task = (params.task as VisionTask) || 'general';
+    const prompt = params.prompt as string | undefined;
+    setCameraTask(task);
+    setCameraPrompt(prompt);
+    setShowCamera(true);
+    return 'Camera is open — take a photo for TCG to analyze.';
+  }, []);
+
+  const handleVisionResult = useCallback((result: string, structured?: any) => {
+    // Inject vision result into live transcript so agent gets context
+    addMessage('system', `🔍 Vision result: ${result}`);
+    if (conversation.status === 'connected') {
+      conversation.sendUserMessage(`[Vision Analysis Complete] ${result}`);
+    }
+    // If it's a bill result, auto-populate the UI feedback
+    if (structured?.total) {
+      addMessage('system', `💰 Detected total: $${structured.total}. ${structured.summary || ''}`);
+    }
+  }, [addMessage, conversation]);
 
   const startConversation = useCallback(async () => {
     try {
@@ -258,8 +374,8 @@ export default function ConversationManager() {
       // Request microphone permission
       await navigator.mediaDevices.getUserMedia({ audio: true });
 
-      // Get signed URL from our API route
-      const response = await fetch('/api/get-signed-url');
+      // Get signed URL from our API route natively supporting dynamic agent selection
+      const response = await fetch('/api/get-signed-url?agentId=' + agentId);
       if (!response.ok) {
         throw new Error('Failed to get signed URL');
       }
@@ -274,6 +390,13 @@ export default function ConversationManager() {
           openTool: handleOpenTool,
           updateGameState: handleUpdateGameState,
           displayResults: handleDisplayResults,
+          showQR: handleShowQR,
+          randomizeGroups: handleRandomizeGroupsTool,
+          analyzeImage: handleAnalyzeImage,
+          captureScreen: async () => {
+            addMessage('system', '📸 Capturing screen memory...');
+            await handleCreateMemory({ type: 'moment', title: 'Captured by Voice', shareCaption: 'TCG grabbed this legendary screenshot.' });
+          },
         },
         overrides: {
           agent: {
@@ -283,6 +406,7 @@ export default function ConversationManager() {
 User Name: ${userName ? userName : 'Unknown yet (Ask naturally)'}
 User Location: ${location ? location : 'Unknown (Ask if needed for spots/plugs)'}
 Current UI Mode: ${activeMode}
+CruiseHQ Room Code: ${roomId} | Active Guests: ${activeGuests.length > 0 ? activeGuests.join(', ') : 'None yet'}
 ${wingmanPreferences ? `
 User's Wingman Protocols: ${wingmanPreferences}
 Always honour these preferences without needing to be reminded.` : ''}
@@ -301,17 +425,21 @@ You are TCG — The Cruise God. You are a world-class AI concierge, local expert
 </personality_core>
 
 <core_workflows>
-1. 🔍 FINDING SPOTS: Call switchMode("locator"). Ask highly dynamic, situational questions to narrow it down if vague. Lead with top 1-2 picks.
-2. 🔌 FINDING SERVICES: Call switchMode("plug"). Ask dynamic, context-aware questions to get specifics. Frame results as personal recommendations.
-3. 🎮 RUNNING GAMES: Call switchMode("game-master"). Find options matching exact energy. Explain rules briefly (< 30s), manage turns, keep score aloud.
-4. 🎲 PARTY TOOLS: Call openTool(tool) for quick utilities (coin, dice, bill, truth, scoreboard, bottle, randomizer, timer). Provide instant color commentary.
+1. 🔍 FINDING SPOTS: Call switchMode("locator") then displayResults(). Ask highly dynamic, situational questions to narrow it down if vague. Lead with top 1-2 picks.
+2. 🔌 FINDING SERVICES: Call switchMode("plug") then displayResults(). Ask dynamic, context-aware questions to get specifics. Frame results as personal recommendations.
+3. 🎮 THE GAME MASTER PROTOCOL: Call switchMode("game-master"). Suggest a game from our database. Ask, "Want me to moderate?". If they say yes, YOU become the host. Call openTool(tool) to deploy the Scoreboard, Timer, or Randomizer. Track turns, enforce the rules boldly, and announce the final winner.
+4. 🎲 PARTY TOOLS: Call openTool(tool) for quick utilities (coin, dice, bill, truth, scoreboard, bottle, randomizer, timer, charades). Provide instant color commentary.
+5. 📸 VISION: Call analyzeImage() when user wants to scan a receipt (task: bill_split), check a drink (task: drink_check), or analyze anything visual (task: general).
+6. 👥 CRUISEHQ & POLLS: Call showQR() to invite guests. When guests mention you (@TCG) in room chat, respond directly to their query. If a Poll or Randomizer result is posted, acknowledge it neutrally and respectfully without roasting.
 </core_workflows>
 
 <critical_behaviors>
 - LATENCY MGT: Say a natural filler BEFORE tools execute. Never leave silence.
-- BARGE-IN RECOVERY: Call abort and acknowledge naturally ("Say less," "Got it") and handle new request instantly.
-- MEMORIES: Call createMemory for epic/funny quotes, group pictures, or location pictures. Intelligently suggest taking pictures to help the user build a habit of making the moment golden. (Max 1-2 per session).
+- BARGE-IN RECOVERY: Acknowledge naturally ("Say less," "Got it") and handle new request instantly.
+- MEMORIES: Call createMemory for: game wins, epic quotes, location drops, plug moments that came through, CruiseHQ highlights. Always provide a viral shareCaption. Suggest captures proactively (max 2-3 per session).
+  - type options: location_drop | game_win | plug_moment | cruisehq_quote | party_milestone | group_capture | moment
 - MODE TRANSITIONS: Detect transitions automatically from context. Call switchMode to update UI.
+- VISION RESULTS: When you receive a [Vision Analysis Complete] message, speak it naturally. For bill_split results, break down who owes what based on the guest count.
 </critical_behaviors>
 
 <advanced_nlp_handling>
@@ -370,25 +498,22 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
     return null;
   };
 
-  const handleRandomizeGroups = (numGroups: number) => {
+  const handleRandomizeGroups = useCallback((numGroups: number) => {
     const shuffled = [...activeGuests].sort(() => 0.5 - Math.random());
     const newGroups: Record<string, string[]> = {};
-    
     for (let i = 0; i < numGroups; i++) {
-       newGroups[`Group ${String.fromCharCode(65 + i)}`] = [];
+      newGroups[`Group ${String.fromCharCode(65 + i)}`] = [];
     }
-
     shuffled.forEach((guest, index) => {
       const groupKey = `Group ${String.fromCharCode(65 + (index % numGroups))}`;
       newGroups[groupKey].push(guest);
     });
-
     setGroups(newGroups);
     addMessage('system', `🎲 Randomly assigned ${activeGuests.length} Cruisers into ${numGroups} groups.`);
-  };
+  }, [activeGuests, addMessage]);
 
   return (
-    <div className="page-container">
+    <div id="tcg-capture-area" className="page-container">
       {/* 1. Radical Multi-Layer Background */}
       <div className="radical-bg" />
 
@@ -396,8 +521,15 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20, background: '#ffffff', border: '1px solid rgba(0,0,0,0.08)', padding: 'max(16px, env(safe-area-inset-top)) 20px 16px', boxShadow: '0 4px 24px rgba(0,0,0,0.25)', borderRadius: '24px', margin: '8px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
           {/* Logo */}
-          <div style={{ width: 'min(140px, 30vw)', flexShrink: 0 }}>
+          <div style={{ width: 'min(140px, 30vw)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
             <img src="/TCG.png" alt="TCG Logo" style={{ width: '100%', height: 'auto', filter: 'drop-shadow(0 2px 8px rgba(0, 0, 0, 0.15))' }} />
+            <button 
+              onClick={() => setShowSettings(true)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: '4px', opacity: 0.7, color: '#fff' }}
+              title="Settings"
+            >
+              ⚙️
+            </button>
           </div>
           
           {/* Location & Room Wrapper */}
@@ -463,6 +595,14 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
       {activeMode === 'tools' && (
         <ToolsPanel activeTool={activeToolId as any} activeGuests={activeGuests} groups={groups} />
       )}
+
+      {/* Settings Modal */}
+      <SettingsModal 
+        isOpen={showSettings} 
+        onClose={() => setShowSettings(false)} 
+        initialName={userName} 
+        onSaveName={setUserName} 
+      />
 
       {/* Floating Modes (Pushed below header) */}
       <div style={{ position: 'absolute', top: '160px', left: 0, right: 0, zIndex: 15, display: 'flex', justifyContent: 'center' }}>
@@ -586,6 +726,32 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
             📸
           </button>
           
+          {/* CruiseHQ Button */}
+          <button
+            onClick={() => setShowCruiseHQ(true)}
+            style={{
+              width: '64px',
+              height: '64px',
+              borderRadius: '50%',
+              background: 'var(--accent-magenta)',
+              border: 'none',
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 8px 20px rgba(224, 64, 251, 0.4)',
+              transition: 'transform 0.1s ease-in-out',
+              fontSize: '1.6rem'
+            }}
+            aria-label="Toggle CruiseHQ Chat"
+            onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.9)'}
+            onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+          >
+            💬
+          </button>
+
           <button
             onClick={() => setShowTranscript(prev => !prev)}
             style={{
@@ -638,6 +804,15 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
           />
         </AnimatePresence>
       </div>
+
+      {/* Camera / Vision Modal */}
+      <CameraCapture
+        isOpen={showCamera}
+        task={cameraTask}
+        prompt={cameraPrompt}
+        onClose={() => setShowCamera(false)}
+        onResult={handleVisionResult}
+      />
 
       {/* 6. Push to Screen Overlay */}
       <AnimatePresence>
@@ -812,6 +987,16 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
           </button>
         </div>
       )}
+
+      {/* CruiseHQ Main Messaging Shell */}
+      <CruiseHQ 
+        roomId={roomId} 
+        currentUser="Host" 
+        groups={groups} 
+        isOpen={showCruiseHQ} 
+        onClose={() => setShowCruiseHQ(false)}
+        onSaveMemory={(text, img) => handleCreateMemory({ type: 'moment', title: 'Room Memory', content: text, image_url: img })}
+      />
     </div>
   );
 }
