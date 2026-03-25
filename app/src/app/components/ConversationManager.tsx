@@ -58,8 +58,11 @@ export default function ConversationManager() {
   const [cohostRequests, setCohostRequests] = useState<string[]>([]);
   const [groups, setGroups] = useState<Record<string, string[]>>({});
   const [showGroupsModal, setShowGroupsModal] = useState(false);
-  const supabase = useRef(createClient());
-  const roomChannelRef = useRef<ReturnType<typeof supabase.current.channel> | null>(null);
+  const supabase = useRef(typeof window !== 'undefined' ? createClient() : null as unknown as ReturnType<typeof createClient>);
+  if (!supabase.current && typeof window !== 'undefined') {
+    supabase.current = createClient();
+  }
+  const roomChannelRef = useRef<any>(null);
   const conversationRef = useRef<typeof conversation | null>(null);
 
   // Vision / Camera States
