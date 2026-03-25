@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "TCG — The Cruise God",
     description: "Voice-first AI that curates vibes, sources local plugs, and hosts savage party games.",
-    url: "https://tcg-cruise-god.vercel.app",
+    url: "https://thecruisegod.vercel.app/",
     siteName: "The Cruise God",
     locale: "en_US",
     type: "website",
