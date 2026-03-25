@@ -45,6 +45,7 @@ export default function ConversationManager() {
   const [showCruiseHQ, setShowCruiseHQ] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [userName, setUserName] = useState<string>('');
+  const [agentId, setAgentId] = useState<string>('rB4Vb4wWn5JDEJ2jJrdR');
   const [wingmanPreferences, setWingmanPreferences] = useState<string>('');
 
 
@@ -78,7 +79,7 @@ export default function ConversationManager() {
         
         if (user) {
           nameToSet = user.user_metadata?.display_name || localStorage.getItem('tcg_userName') || '';
-          agentToSet = user.user_metadata?.agent_id || localStorage.getItem('tcg_agentId') || VOICES[0]?.id || '';
+          agentToSet = user.user_metadata?.agent_id || localStorage.getItem('tcg_agentId') || '';
           const prefs = user.user_metadata?.wingman_preferences || '';
           setWingmanPreferences(prefs);
           
@@ -86,14 +87,14 @@ export default function ConversationManager() {
           if (agentToSet) localStorage.setItem('tcg_agentId', agentToSet);
         } else {
           nameToSet = localStorage.getItem('tcg_userName') || '';
-          agentToSet = localStorage.getItem('tcg_agentId') || VOICES[0]?.id || '';
+          agentToSet = localStorage.getItem('tcg_agentId') || '';
         }
         
         setUserName(nameToSet);
         setAgentId(agentToSet);
       } catch {
         const savedName = localStorage.getItem('tcg_userName') || '';
-        const savedAgent = localStorage.getItem('tcg_agentId') || VOICES[0]?.id || '';
+        const savedAgent = localStorage.getItem('tcg_agentId') || 'rB4Vb4wWn5JDEJ2jJrdR';
         setUserName(savedName);
         setAgentId(savedAgent);
       }

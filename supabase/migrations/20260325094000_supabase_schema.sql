@@ -47,11 +47,21 @@ ALTER TABLE public.tcg_locations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tcg_plugs ENABLE ROW LEVEL SECURITY;
 
 -- Create policies for anon read access
+DROP POLICY IF EXISTS "Allow public read access to games" ON public.tcg_games;
 CREATE POLICY "Allow public read access to games" ON public.tcg_games FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Allow public read access to locations" ON public.tcg_locations;
 CREATE POLICY "Allow public read access to locations" ON public.tcg_locations FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Allow public read access to plugs" ON public.tcg_plugs;
 CREATE POLICY "Allow public read access to plugs" ON public.tcg_plugs FOR SELECT USING (true);
 
 -- Insert policies (Anon can insert if they hit the Edge Function, but we rely on the API doing it securely via service role or anon key with permissive insert for caching)
-CREATE POLICY "Allow anon insert to games" ON public.tcg_games FOR INSERT WITH CHECK (true);
-CREATE POLICY "Allow anon insert to locations" ON public.tcg_locations FOR INSERT WITH CHECK (true);
-CREATE POLICY "Allow anon insert to plugs" ON public.tcg_plugs FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow anon insert to games" ON public.tcg_games;
+CREATE POLICY "Allow anon insert to games" ON public.tcg_games FOR INSERT WITH CHECK ((select auth.role()) = 'anon');
+
+DROP POLICY IF EXISTS "Allow anon insert to locations" ON public.tcg_locations;
+CREATE POLICY "Allow anon insert to locations" ON public.tcg_locations FOR INSERT WITH CHECK ((select auth.role()) = 'anon');
+
+DROP POLICY IF EXISTS "Allow anon insert to plugs" ON public.tcg_plugs;
+CREATE POLICY "Allow anon insert to plugs" ON public.tcg_plugs FOR INSERT WITH CHECK ((select auth.role()) = 'anon');

@@ -1,16 +1,61 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
+
+const ADMIN_EMAIL = 'kryptopacy@gmail.com';
+const ADMIN_PASSWORD = 'tcghackathon';
+
+// We initialize Supabase to check the live-mode admin login.
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function AdminDashboard() {
   const [demoMode, setDemoMode] = useState<boolean>(false);
   const [notification, setNotification] = useState<string | null>(null);
+  
+  const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
+  const [authChecking, setAuthChecking] = useState<boolean>(true);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [passwordError, setPasswordError] = useState('');
 
   useEffect(() => {
     // Check cookie on mount
     const isDemo = document.cookie.includes('tcg_demo_mode=true');
     setDemoMode(isDemo);
+
+    const checkAuth = async () => {
+      // Demo Mode: Requires hardcoded "tcg_admin_auth" session storage (or password entry UI below)
+      if (isDemo) {
+        if (sessionStorage.getItem('tcg_admin_auth') === 'true') {
+          setIsAuthorized(true);
+        }
+      } else {
+        // Live Mode: Requires Supabase JWT with specific admin email
+        if (supabaseUrl && supabaseKey) {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user && user.email === ADMIN_EMAIL) {
+            setIsAuthorized(true);
+          }
+        }
+      }
+      setAuthChecking(false);
+    };
+    
+    checkAuth();
   }, []);
+
+  const handlePasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passwordInput === ADMIN_PASSWORD) {
+      setIsAuthorized(true);
+      sessionStorage.setItem('tcg_admin_auth', 'true');
+      setPasswordError('');
+    } else {
+      setPasswordError('Incorrect password');
+    }
+  };
 
   const toggleDemoMode = (enabled: boolean) => {
     setDemoMode(enabled);
@@ -20,10 +65,52 @@ export default function AdminDashboard() {
     } else {
       document.cookie = "tcg_demo_mode=false; path=/; max-age=0;"; // Delete cookie
       setNotification("Production Mode ENABLED. Using Supabase Auth and DB.");
+      
+      // If switching out of demo mode into live mode, force re-authorization via Supabase email check
+      sessionStorage.removeItem('tcg_admin_auth');
+      setIsAuthorized(false);
     }
 
     setTimeout(() => setNotification(null), 4000);
   };
+
+  if (authChecking) {
+    return <div style={{ minHeight: '100dvh', background: '#0B0C10', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading Admin Console...</div>;
+  }
+
+  // Intercept the render if not authorized
+  if (!isAuthorized) {
+    return (
+      <div style={{ minHeight: '100dvh', background: '#0B0C10', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
+        <h2 style={{ color: '#00E5FF', marginBottom: '16px' }}>TCG Admin Access Required</h2>
+        
+        {demoMode ? (
+          <form onSubmit={handlePasswordSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '300px' }}>
+            <p style={{ color: '#A0AAB2', fontSize: '0.9rem', textAlign: 'center', marginBottom: '8px' }}>
+              Hackathon Demo Mode is active. Enter the admin password to unlock the console.
+            </p>
+            <input 
+              type="password" 
+              placeholder="Admin Password" 
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              style={{ padding: '12px', borderRadius: '8px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff' }}
+            />
+            {passwordError && <div style={{ color: '#FF2A2A', fontSize: '0.8rem', textAlign: 'center' }}>{passwordError}</div>}
+            <button type="submit" style={{ padding: '12px', borderRadius: '8px', background: '#00E5FF', color: '#000', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}>
+              Unlock Console
+            </button>
+          </form>
+        ) : (
+          <div style={{ textAlign: 'center', color: '#A0AAB2', maxWidth: '400px', lineHeight: 1.6 }}>
+            <p>Live production mode is currently active.</p>
+            <p>You must be logged into the main app with the approved admin email (<strong style={{color: '#fff'}}>{ADMIN_EMAIL}</strong>) to access this page.</p>
+            <a href="/" style={{ color: '#00E5FF', display: 'inline-block', marginTop: '16px', textDecoration: 'none', fontWeight: 'bold' }}>Return to App & Login</a>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={{
