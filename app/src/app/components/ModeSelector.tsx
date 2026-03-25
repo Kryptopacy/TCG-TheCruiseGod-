@@ -20,10 +20,10 @@ export default function ModeSelector({ activeMode, onModeChange }: ModeSelectorP
   return (
     <div style={{
       display: 'flex',
-      gap: '12px',
-      padding: '16px 8px',
+      gap: '6px',
+      padding: '4px',
       justifyContent: 'center',
-      flexWrap: 'wrap',
+      flexWrap: 'nowrap',
     }}>
       {modes.map((mode) => {
         const isActive = activeMode === mode.id;
@@ -34,10 +34,14 @@ export default function ModeSelector({ activeMode, onModeChange }: ModeSelectorP
             className={`mode-badge ${mode.id}`}
             style={{
               cursor: 'pointer',
-              padding: '10px 20px',
+              padding: 'clamp(6px, 1.5vw, 10px) clamp(8px, 2.5vw, 18px)',
               borderRadius: '30px',
               color: isActive ? '#fff' : 'rgba(255, 255, 255, 0.6)',
               fontWeight: isActive ? 800 : 600,
+              fontSize: 'clamp(0.62rem, 2vw, 0.78rem)',
+              whiteSpace: 'nowrap',
+              minHeight: 'unset',
+              minWidth: 'unset',
               background: isActive
                 ? mode.id === 'locator' ? 'rgba(0, 240, 255, 0.15)'
                   : mode.id === 'plug' ? 'rgba(255, 215, 0, 0.15)'

@@ -6,9 +6,10 @@ interface WaveformVisualizerProps {
   isSpeaking: boolean;
   isListening: boolean;
   color?: string;
+  secondaryColor?: string;
 }
 
-export default function WaveformVisualizer({ isSpeaking, isListening, color = '#00e5ff' }: WaveformVisualizerProps) {
+export default function WaveformVisualizer({ isSpeaking, isListening, color = '#9D00FF', secondaryColor }: WaveformVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -59,7 +60,7 @@ export default function WaveformVisualizer({ isSpeaking, isListening, color = '#
 
       // Draw secondary wave
       ctx.beginPath();
-      ctx.strokeStyle = '#e040fb';
+      ctx.strokeStyle = secondaryColor || color;
       ctx.globalAlpha = 0.3;
       for (let i = 0; i <= 40; i++) {
         const x = i * step;

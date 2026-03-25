@@ -522,14 +522,14 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
       <div className="radical-bg" />
 
       {/* 2. Distinct Header Layer: Logo and Location */}
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20, background: 'rgba(10, 10, 20, 0.85)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.08)', padding: 'max(16px, env(safe-area-inset-top)) 20px 16px', boxShadow: '0 4px 30px rgba(0,0,0,0.5)', borderRadius: '24px', margin: '8px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20, background: 'rgba(10, 10, 20, 0.88)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.08)', padding: 'max(12px, env(safe-area-inset-top)) 14px 12px', boxShadow: '0 4px 30px rgba(0,0,0,0.5)', borderRadius: '20px', margin: '6px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
           {/* Logo */}
-          <div style={{ width: 'min(140px, 30vw)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ width: 'min(110px, 26vw)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
             <img src="/tcg-logo.png" alt="TCG Logo" style={{ width: '100%', height: 'auto', filter: 'drop-shadow(0 2px 8px rgba(0, 0, 0, 0.5))' }} />
             <button 
               onClick={() => setShowSettings(true)}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: '4px', opacity: 0.7, color: '#fff' }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem', padding: '4px', opacity: 0.7, color: '#fff', minWidth: 'unset', minHeight: 'unset' }}
               title="Settings"
             >
               ⚙️
@@ -537,15 +537,15 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
           </div>
           
           {/* Location & Room Wrapper */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', zIndex: 30 }}>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end', marginBottom: '8px' }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px', zIndex: 30, minWidth: 0 }}>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               {/* Active Guests Badge */}
               {isStarted && activeGuests.length > 0 && (
                 <div 
                   onClick={() => setShowGroupsModal(true)}
-                  style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: 'var(--radius-full)', background: 'rgba(0, 229, 255, 0.1)', border: '1px solid rgba(0, 229, 255, 0.3)', color: 'var(--accent-cyan)', fontSize: '0.75rem', fontWeight: 800 }}
+                  style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 10px', borderRadius: 'var(--radius-full)', background: 'rgba(0, 229, 255, 0.1)', border: '1px solid rgba(0, 229, 255, 0.3)', color: 'var(--accent-cyan)', fontSize: '0.7rem', fontWeight: 800, whiteSpace: 'nowrap' }}
                 >
-                  👥 {activeGuests.length} Cruiser{activeGuests.length !== 1 ? 's' : ''} {Object.keys(groups).length > 0 ? `(${Object.keys(groups).length} Groups)` : ''}
+                  👥 {activeGuests.length} {Object.keys(groups).length > 0 ? `(${Object.keys(groups).length}G)` : ''}
                 </div>
               )}
 
@@ -553,21 +553,21 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
               {isStarted && (
                 <button
                   onClick={() => setShowQR(true)}
-                  style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: 'var(--radius-full)', border: '2px solid var(--accent-magenta)', background: 'rgba(224, 64, 251, 0.1)', color: 'var(--accent-magenta)', fontSize: '0.75rem', maxWidth: '100%', whiteSpace: 'nowrap', fontWeight: 800, boxShadow: '0 2px 8px rgba(224, 64, 251, 0.2)' }}
+                  style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 10px', borderRadius: 'var(--radius-full)', border: '2px solid var(--accent-magenta)', background: 'rgba(224, 64, 251, 0.1)', color: 'var(--accent-magenta)', fontSize: '0.7rem', whiteSpace: 'nowrap', fontWeight: 800, boxShadow: '0 2px 8px rgba(224, 64, 251, 0.2)', minWidth: 'unset', minHeight: 'unset' }}
                 >
-                  📱 CruiseHQ: {roomId}
+                  📱 {roomId}
                 </button>
               )}
             </div>
 
             {/* Location Input/Badge */}
               {showLocationInput ? (
-                <div style={{ background: 'rgba(255, 230, 0, 0.1)', padding: '8px 12px', display: 'flex', gap: '8px', alignItems: 'center', width: '100%', maxWidth: '400px', animation: 'slide-down-toast 0.2s', borderRadius: '16px', border: '1px solid rgba(255, 230, 0, 0.3)', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }}>
+                <div style={{ background: 'rgba(255, 230, 0, 0.1)', padding: '8px 12px', display: 'flex', gap: '8px', alignItems: 'center', width: '100%', maxWidth: '320px', animation: 'slide-down-toast 0.2s', borderRadius: '14px', border: '1px solid rgba(255, 230, 0, 0.3)', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }}>
                   <textarea
                     value={location}
                     onChange={(e) => setLocation(e.target.value)}
                     placeholder="Edit full address..."
-                    style={{ flex: 1, background: 'transparent', border: 'none', color: '#fff', fontSize: '0.85rem', outline: 'none', minHeight: '40px', resize: 'none', fontFamily: 'inherit', padding: '4px 0' }}
+                    style={{ flex: 1, background: 'transparent', border: 'none', color: '#fff', fontSize: '0.8rem', outline: 'none', minHeight: '36px', resize: 'none', fontFamily: 'inherit', padding: '4px 0' }}
                     rows={2}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey && location.trim()) {
@@ -579,14 +579,14 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
                     autoFocus
                   />
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <button onClick={handleGetLocation} disabled={isGettingLocation} style={{ background: '#FFE600', border: '2px solid #d4b800', color: '#000', padding: '6px 12px', borderRadius: '8px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 800 }}>{isGettingLocation ? '...' : 'Auto'}</button>
-                    {location.trim() && <button onClick={() => setShowLocationInput(false)} style={{ background: 'var(--accent-green)', border: 'none', color: '#000', padding: '6px 12px', borderRadius: '8px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 900 }}>OK</button>}
+                    <button onClick={handleGetLocation} disabled={isGettingLocation} style={{ background: '#FFE600', border: '2px solid #d4b800', color: '#000', padding: '5px 10px', borderRadius: '8px', fontSize: '0.7rem', cursor: 'pointer', fontWeight: 800, minWidth: 'unset', minHeight: 'unset' }}>{isGettingLocation ? '...' : 'Auto'}</button>
+                    {location.trim() && <button onClick={() => setShowLocationInput(false)} style={{ background: 'var(--accent-green)', border: 'none', color: '#000', padding: '5px 10px', borderRadius: '8px', fontSize: '0.7rem', cursor: 'pointer', fontWeight: 900, minWidth: 'unset', minHeight: 'unset' }}>OK</button>}
                   </div>
                 </div>
               ) : (
                 <button
                   onClick={() => setShowLocationInput(true)}
-                  style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: 'var(--radius-full)', border: '1px solid rgba(255, 230, 0, 0.3)', background: 'rgba(255, 230, 0, 0.1)', color: 'var(--accent-gold)', fontSize: '0.75rem', maxWidth: '100%', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', fontWeight: 700, boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}
+                  style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 12px', borderRadius: 'var(--radius-full)', border: '1px solid rgba(255, 230, 0, 0.3)', background: 'rgba(255, 230, 0, 0.1)', color: 'var(--accent-gold)', fontSize: '0.7rem', maxWidth: '100%', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', fontWeight: 700, boxShadow: '0 2px 8px rgba(0,0,0,0.3)', minWidth: 'unset', minHeight: 'unset' }}
                 >
                   📍 {location || "Set Your Location"}
                 </button>
@@ -609,8 +609,8 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
       />
 
       {/* Floating Modes (Pushed below header) */}
-      <div style={{ position: 'absolute', top: '160px', left: 0, right: 0, zIndex: 15, display: 'flex', justifyContent: 'center' }}>
-        <div className="glass-overlay" style={{ padding: '8px', borderRadius: 'var(--radius-full)' }}>
+      <div style={{ position: 'absolute', top: 'clamp(95px, 20vmin, 155px)', left: 0, right: 0, zIndex: 15, display: 'flex', justifyContent: 'center' }}>
+        <div className="glass-overlay" style={{ padding: '6px 8px', borderRadius: 'var(--radius-full)' }}>
           <ModeSelector activeMode={activeMode} onModeChange={setActiveMode} />
         </div>
       </div>
@@ -667,7 +667,16 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
         <WaveformVisualizer 
           isSpeaking={conversation.isSpeaking} 
           isListening={conversation.status === 'connected' && !conversation.isSpeaking}
-          color={activeMode === 'locator' ? 'var(--accent-green)' : activeMode === 'plug' ? 'var(--accent-gold)' : 'var(--accent-red)'}
+          color={
+            conversation.isSpeaking 
+              ? (activeMode === 'locator' ? '#00f0ff' : activeMode === 'plug' ? '#9d00ff' : activeMode === 'game-master' ? '#ff2a2a' : '#ff6b00')
+              : '#ffffff'
+          }
+          secondaryColor={
+            conversation.isSpeaking 
+              ? (activeMode === 'locator' ? 'rgba(0, 240, 255, 0.4)' : activeMode === 'plug' ? 'rgba(157, 0, 255, 0.4)' : activeMode === 'game-master' ? 'rgba(255, 42, 42, 0.4)' : 'rgba(255, 107, 0, 0.4)')
+              : 'rgba(255, 255, 255, 0.3)'
+          }
         />
       </div>
 
@@ -675,12 +684,11 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
       <div 
         style={{ 
           position: 'absolute', 
-          bottom: '-5vh', // Anchor him slightly below the screen edge to look rooted
+          bottom: '-5vh',
           left: '50%', 
           transform: `translateX(-50%) ${conversation.isSpeaking ? 'scale(1.05)' : 'scale(1)'}`, 
           zIndex: 5, 
-          width: '120vw', 
-          maxWidth: '500px',
+          width: 'min(85vw, 420px)',
           cursor: 'pointer',
           transition: 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
           animation: conversation.isSpeaking ? 'speaking-bounce 1s infinite ease-in-out' : 'idle-float 5s infinite ease-in-out',
@@ -701,26 +709,26 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
         />
       </div>
 
-      {/* Floating Action Button for Chat Mode */}
+      {/* Floating Action Buttons */}
       {isStarted && (
-        <div style={{ position: 'absolute', bottom: '24px', left: '24px', display: 'flex', flexDirection: 'column', gap: '16px', zIndex: 60 }}>
+        <div style={{ position: 'absolute', bottom: '24px', left: '16px', display: 'flex', flexDirection: 'column', gap: '12px', zIndex: 60, alignItems: 'center' }}>
           {/* Manual Memory Capture Button */}
           <button
             onClick={() => handleCreateMemory({ type: 'moment', title: 'Captured Memory', content: 'Manually saved by you.' })}
             style={{
-              width: '56px',
-              height: '56px',
+              width: '52px',
+              height: '52px',
               borderRadius: '50%',
-              background: 'var(--accent-cyan)',
-              border: 'none',
-              color: '#000',
+              background: 'rgba(30, 10, 60, 0.85)',
+              border: '2px solid rgba(0, 229, 255, 0.5)',
+              color: '#00E5FF',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               cursor: 'pointer',
-              boxShadow: '0 8px 20px rgba(0, 229, 255, 0.4)',
+              boxShadow: '0 4px 16px rgba(0, 229, 255, 0.35)',
               transition: 'transform 0.1s ease-in-out',
-              fontSize: '1.5rem'
+              fontSize: '1.4rem'
             }}
             aria-label="Capture Memory"
             onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.9)'}
@@ -729,60 +737,105 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
           >
             📸
           </button>
-          
-          {/* CruiseHQ Button */}
-          <button
-            onClick={() => setShowCruiseHQ(true)}
-            style={{
-              width: '64px',
-              height: '64px',
-              borderRadius: '50%',
-              background: 'var(--accent-magenta)',
-              border: 'none',
-              color: '#fff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              boxShadow: '0 8px 20px rgba(224, 64, 251, 0.4)',
-              transition: 'transform 0.1s ease-in-out',
-              fontSize: '1.6rem'
-            }}
-            aria-label="Toggle CruiseHQ Chat"
-            onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.9)'}
-            onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
-            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-          >
-            💬
-          </button>
 
-          <button
-            onClick={() => setShowTranscript(prev => !prev)}
-            style={{
-              width: '64px',
-              height: '64px',
-              borderRadius: '50%',
-              background: 'var(--accent-gold)',
-              border: 'none',
-              color: '#000',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              boxShadow: '0 8px 20px rgba(255, 230, 0, 0.4)',
-              transition: 'transform 0.1s ease-in-out'
-            }}
-            aria-label="Toggle Text Chat"
-            onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.9)'}
-            onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
-            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-          >
-            {showTranscript ? (
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-            ) : (
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-            )}
-          </button>
+          {/* Manual TCG Vision Button */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+            <button
+              onClick={() => {
+                setCameraTask('general');
+                setCameraPrompt(undefined);
+                setShowCamera(true);
+              }}
+              style={{
+                width: '60px',
+                height: '60px',
+                borderRadius: '16px',
+                background: 'linear-gradient(145deg, #00C8FF, #0080FF)',
+                border: '2px solid rgba(0, 200, 255, 0.5)',
+                color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                boxShadow: '0 6px 20px rgba(0, 128, 255, 0.55)',
+                transition: 'transform 0.1s ease-in-out',
+                fontSize: '1.5rem',
+              }}
+              aria-label="Toggle TCG Vision"
+              onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.9)'}
+              onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            >
+              👁️
+            </button>
+            <span style={{ fontSize: '0.6rem', fontWeight: 900, color: '#1a0040', textTransform: 'uppercase', letterSpacing: '0.05em', textShadow: '0 1px 2px rgba(255,255,255,0.3)' }}>VISION</span>
+          </div>
+          
+          {/* CruiseHQ Group Chat Button — distinctly branded with group icon + CREW label */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+            <button
+              onClick={() => setShowCruiseHQ(true)}
+              style={{
+                width: '60px',
+                height: '60px',
+                borderRadius: '16px',
+                background: 'linear-gradient(145deg, #5B00C8, #9D00FF)',
+                border: '2px solid rgba(200, 100, 255, 0.5)',
+                color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                boxShadow: '0 6px 20px rgba(157, 0, 255, 0.55)',
+                transition: 'transform 0.1s ease-in-out',
+              }}
+              aria-label="Toggle CruiseHQ Chat"
+              onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.9)'}
+              onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            >
+              {/* Group people icon */}
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+              </svg>
+            </button>
+            <span style={{ fontSize: '0.6rem', fontWeight: 900, color: '#1a0040', textTransform: 'uppercase', letterSpacing: '0.05em', textShadow: '0 1px 2px rgba(255,255,255,0.3)' }}>CREW</span>
+          </div>
+
+          {/* TCG AI Text Chat Button — distinctly branded with TCG label */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+            <button
+              onClick={() => setShowTranscript(prev => !prev)}
+              style={{
+                width: '60px',
+                height: '60px',
+                borderRadius: '16px',
+                background: showTranscript ? 'linear-gradient(145deg, #1a0040, #3a0080)' : 'linear-gradient(145deg, #1a0040, #3a0080)',
+                border: showTranscript ? '2px solid #FFE600' : '2px solid rgba(255, 230, 0, 0.5)',
+                color: '#FFE600',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                boxShadow: showTranscript ? '0 6px 24px rgba(255, 230, 0, 0.6)' : '0 6px 20px rgba(255, 230, 0, 0.35)',
+                transition: 'all 0.15s ease-in-out',
+                gap: '2px',
+              }}
+              aria-label="Toggle TCG Text Chat"
+              onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.9)'}
+              onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            >
+              {showTranscript ? (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              ) : (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+              )}
+              <span style={{ fontSize: '0.55rem', fontWeight: 900, letterSpacing: '0.04em' }}>TCG</span>
+            </button>
+            <span style={{ fontSize: '0.6rem', fontWeight: 900, color: '#1a0040', textTransform: 'uppercase', letterSpacing: '0.05em', textShadow: '0 1px 2px rgba(255,255,255,0.3)' }}>CHAT</span>
+          </div>
         </div>
       )}
 
@@ -968,8 +1021,8 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
           position: 'fixed',
           inset: 0,
           zIndex: 100,
-          background: 'rgba(9, 9, 11, 0.6)', // Increased opacity slightly
-          backdropFilter: 'blur(10px)', // Drastically reduced blur radius for cheap rendering
+          background: 'rgba(9, 9, 11, 0.6)',
+          backdropFilter: 'blur(10px)',
           WebkitBackdropFilter: 'blur(10px)',
           display: 'flex',
           flexDirection: 'column',
@@ -978,14 +1031,14 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
           padding: '24px',
           textAlign: 'center'
         }}>
-          <img src="/tcg-logo.png" alt="TCG Character" style={{ width: '320px', height: 'auto', marginBottom: '48px', filter: 'drop-shadow(0 15px 30px rgba(0,0,0,0.6))', animation: 'idle-float 4s infinite ease-in-out', willChange: 'transform' }} />
+          <img src="/tcg-logo.png" alt="TCG Character" style={{ width: 'min(260px, 72vw)', height: 'auto', marginBottom: '40px', filter: 'drop-shadow(0 15px 30px rgba(0,0,0,0.6))', animation: 'idle-float 4s infinite ease-in-out', willChange: 'transform' }} />
           <button 
             className="chunky-button"
             onClick={() => {
               setIsStarted(true);
               startConversation();
             }}
-            style={{ transform: 'translateZ(0)' }} // GPU acceleration
+            style={{ transform: 'translateZ(0)' }}
           >
             TAP TO ENTER
           </button>
