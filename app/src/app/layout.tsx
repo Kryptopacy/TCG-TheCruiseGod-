@@ -35,12 +35,12 @@ export const metadata: Metadata = {
   manifest: "/manifest.json",
   icons: {
     icon: [
-      { url: "/TCG.PNG", type: "image/png" }
+      { url: "/TCG.png", type: "image/png" }
     ],
     shortcut: [
-      { url: "/TCG.PNG", type: "image/png" }
+      { url: "/TCG.png", type: "image/png" }
     ],
-    apple: "/TCG.PNG",
+    apple: "/TCG.png",
   },
 };
 

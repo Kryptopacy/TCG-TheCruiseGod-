@@ -526,7 +526,7 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
           {/* Logo */}
           <div style={{ width: 'min(140px, 30vw)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <img src="/TCG.PNG" alt="TCG Logo" style={{ width: '100%', height: 'auto', filter: 'drop-shadow(0 2px 8px rgba(0, 0, 0, 0.5))' }} />
+            <img src="/TCG.png" alt="TCG Logo" style={{ width: '100%', height: 'auto', filter: 'drop-shadow(0 2px 8px rgba(0, 0, 0, 0.5))' }} />
             <button 
               onClick={() => setShowSettings(true)}
               style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: '4px', opacity: 0.7, color: '#fff' }}
@@ -695,7 +695,7 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
         title={conversation.status === 'connected' ? "Tap to Disconnect" : "Tap to Connect"}
       >
         <img 
-          src="/TCG character.PNG" 
+          src="/TCG character.png" 
           alt="The Cruise God"
           style={{ width: '100%', height: 'auto', display: 'block', pointerEvents: 'none' }} 
         />
