@@ -249,7 +249,10 @@ export async function performFirecrawlSearch(req: SearchRequest): Promise<Unifie
         });
 
         if (insertData.length > 0) {
-          const { error } = await supabase.from(tableName).insert(insertData);
+          const { error } = await supabase.from(tableName).upsert(insertData, {
+            onConflict: type === 'games' ? 'query_key,title' : 'query_key,location_key,title',
+            ignoreDuplicates: true,
+          });
           if (error) console.error(`[DB Insert Error] ${tableName}:`, error);
           else console.log(`[DB Insert] Saved ${insertData.length} records to ${tableName}`);
         }
