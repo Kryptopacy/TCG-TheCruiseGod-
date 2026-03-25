@@ -130,11 +130,14 @@ export default function ConversationManager() {
   }, []);
 
   useEffect(() => {
+    // Only start the background video stream once the user has tapped in
+    if (!isStarted) return;
     startVideoStream(facingMode);
     return () => {
       streamRef.current?.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
     };
-  }, [facingMode, startVideoStream]);
+  }, [facingMode, startVideoStream, isStarted]);
 
   const flipCamera = () => {
     setFacingMode(prev => prev === 'environment' ? 'user' : 'environment');
@@ -143,20 +146,28 @@ export default function ConversationManager() {
   const toggleVideoStream = () => {
     setIsVideoPaused(prev => {
       const next = !prev;
-      if (videoRef.current) videoRef.current.pause();
-      if (!next && videoRef.current) videoRef.current.play();
+      if (next) {
+        // Fully stop camera tracks so the camera indicator light turns off
+        streamRef.current?.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+        if (videoRef.current) videoRef.current.srcObject = null;
+      } else {
+        // Restart the stream when resuming
+        startVideoStream(facingMode);
+      }
       return next;
     });
   };
 
   // Toggle mic mute via ElevenLabs SDK
   const toggleMicMute = useCallback(() => {
+    if (conversationRef.current?.status !== 'connected') return;
     setIsMicMuted(prev => {
       const next = !prev;
-      try { (conversation as any).setMute?.(next); } catch {}
+      try { (conversationRef.current as any)?.setMute?.(next); } catch {}
       return next;
     });
-  }, [conversation]);
+  }, []);
 
   const { captureAndUpload } = useTrophyCapture();
   const { 

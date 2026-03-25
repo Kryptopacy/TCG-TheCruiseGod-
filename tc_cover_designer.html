@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>TCG Cover Designer</title>
+    <title>TCG Cover Designer - Perfected</title>
+    <!-- Modern premium font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
     <style>
         body {
             margin: 0;
@@ -16,89 +18,281 @@
             position: relative;
             font-family: 'Inter', -apple-system, sans-serif;
             overflow: hidden;
+            color: #111;
         }
 
-        .wave {
+        /* Abstract dynamic voice wave background */
+        .wave-glow {
             position: absolute;
             bottom: -30%;
             left: -10%;
             width: 120%;
             height: 80%;
-            background: radial-gradient(ellipse at bottom center, rgba(157, 0, 255, 0.6) 0%, rgba(157, 0, 255, 0) 70%);
+            background: radial-gradient(ellipse at bottom center, rgba(157, 0, 255, 0.7) 0%, rgba(157, 0, 255, 0) 70%);
             z-index: 1;
             filter: blur(50px);
         }
 
+        .wave-lines {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 400px;
+            background-image: repeating-linear-gradient(
+                90deg,
+                transparent,
+                transparent 15px,
+                rgba(157, 0, 255, 0.15) 15px,
+                rgba(157, 0, 255, 0.15) 20px
+            );
+            mask-image: linear-gradient(to top, rgba(0,0,0,1), rgba(0,0,0,0));
+            -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,1), rgba(0,0,0,0));
+            z-index: 2;
+        }
+
+        .aura-circle {
+            position: absolute;
+            width: 900px;
+            height: 900px;
+            background: radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0) 65%);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 3;
+        }
+
+        /* Logo / Character */
         .image-container {
+            position: absolute;
             display: flex;
             align-items: center;
             justify-content: center;
+            width: 100%;
+            height: 100%;
+            z-index: 15; /* Top level stacking context */
+            pointer-events: none;
+            mix-blend-mode: multiply; /* Blends the entire context with the background */
         }
 
         .cover {
             max-width: 1100px;
-            max-height: 800px;
+            max-height: 850px;
             mix-blend-mode: multiply;
-            /* Using standard margin based positioning instead of z-index */
+            filter: contrast(1.1) brightness(1.05) saturate(1.1); /* Blow out off-whites to pure white */
         }
 
+        /* Feature Pills */
         .btn {
             position: absolute;
-            background: rgba(22, 4, 4, 0.9);
-            color: white;
-            padding: 24px 40px;
-            border-radius: 50px;
-            font-size: 28px;
+            background: rgba(10, 10, 10, 0.95);
+            color: #fff;
+            padding: 22px 40px;
+            border-radius: 60px;
+            font-size: 26px;
             font-weight: 800;
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3), 0 0 0 2px rgba(255, 255, 255, 0.05) inset;
             display: flex;
             align-items: center;
             gap: 16px;
             z-index: 20;
-            backdrop-filter: blur(14px);
-            border: 2px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(16px);
+            border: 2px solid transparent; /* default */
+        }
+
+        .btn-icon {
+            font-size: 32px;
+            filter: drop-shadow(0 2px 5px rgba(0,0,0,0.4));
         }
 
         .btn-room {
             top: 60px;
             left: 60px;
-            background: rgba(255, 200, 0, 0.1);
+            background: #fff;
             color: #111;
-            border: 3px solid rgba(17, 17, 17, 0.8);
+            border: 4px solid #111;
             font-size: 32px;
+            padding: 24px 48px;
+            box-shadow: 10px 10px 0px rgba(17, 17, 17, 1);
+            transform: rotate(-2deg);
         }
 
-        .btn-game { border-color: rgba(255, 42, 42, 0.5); top: 15%; right: 10%; transform: rotate(4deg); }
-        .btn-locator { border-color: rgba(0, 240, 255, 0.5); bottom: 15%; left: 8%; transform: rotate(-5deg); }
-        .btn-plug { border-color: rgba(157, 0, 255, 0.5); bottom: 25%; right: 12%; transform: rotate(-3deg); }
-        .btn-tools { border-color: rgba(255, 200, 0, 0.5); top: 35%; left: 10%; transform: rotate(6deg); }
-
-        .aura-circle {
+        .btn-subtitle {
             position: absolute;
-            width: 800px;
-            height: 800px;
-            background: radial-gradient(circle, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0) 60%);
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 2;
-            opacity: 0.5;
+            top: 150px;
+            left: 60px;
+            background: #111;
+            color: #FFE600;
+            padding: 12px 24px;
+            font-size: 24px;
+            font-weight: 900;
+            transform: rotate(-2deg);
+            z-index: 20;
+            box-shadow: 6px 6px 0px rgba(255, 255, 255, 0.2);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn-voice { 
+            top: 25%; 
+            right: 8%; 
+            border-color: rgba(157, 0, 255, 0.6); 
+            transform: rotate(4deg); 
+            box-shadow: 0 15px 35px rgba(157, 0, 255, 0.2);
+        }
+
+        .btn-locator { 
+            bottom: 30%; 
+            left: 8%; 
+            border-color: rgba(0, 255, 136, 0.6); 
+            transform: rotate(-5deg); 
+            box-shadow: 0 15px 35px rgba(0, 255, 136, 0.2);
+        }
+
+        .btn-game { 
+            bottom: 25%; 
+            right: 12%; 
+            border-color: rgba(255, 42, 42, 0.6); 
+            transform: rotate(-3deg); 
+            box-shadow: 0 15px 35px rgba(255, 42, 42, 0.2);
+        }
+
+        .btn-tools { 
+            top: 40%; 
+            left: 10%; 
+            border-color: rgba(255, 200, 0, 0.6); 
+            transform: rotate(3deg); 
+            box-shadow: 0 15px 35px rgba(255, 200, 0, 0.2);
+            background: rgba(26, 26, 26, 0.95);
+        }
+
+        .btn-plug {
+            top: auto;
+            bottom: 45%;
+            right: 5%;
+            border-color: rgba(0, 240, 255, 0.6);
+            transform: rotate(6deg);
+            box-shadow: 0 15px 35px rgba(0, 240, 255, 0.2);
+        }
+
+        /* Bottom Tech Stack Bar */
+        .tech-stack {
+            position: absolute;
+            bottom: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 24px;
+            z-index: 20;
+            width: 100%;
+        }
+
+        .tech-badge {
+            background: #fff;
+            color: #111;
+            padding: 18px 36px;
+            border-radius: 20px;
+            font-size: 24px;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.15);
+            border: 3px solid rgba(17, 17, 17, 0.08);
+            transform: translateY(0);
+            transition: transform 0.3s ease;
+        }
+
+        /* Pulse Indicator */
+        .live-status {
+            position: absolute;
+            top: 60px;
+            right: 60px;
+            background: #FF2A2A;
+            color: #fff;
+            padding: 14px 28px;
+            border-radius: 50px;
+            font-size: 24px;
+            font-weight: 900;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            z-index: 25;
+            box-shadow: 0 0 0 6px rgba(255, 42, 42, 0.25);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .pulse {
+            width: 16px;
+            height: 16px;
+            background: #fff;
+            border-radius: 50%;
+            animation: pulse-anim 1.5s infinite;
+        }
+
+        @keyframes pulse-anim {
+            0% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.8); }
+            70% { box-shadow: 0 0 0 12px rgba(255, 255, 255, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
         }
     </style>
 </head>
 <body>
-    <div class="wave"></div>
+    <!-- Background Layers -->
+    <div class="wave-glow"></div>
+    <div class="wave-lines"></div>
     <div class="aura-circle"></div>
-    
-    <div class="btn btn-room">📱 CRUISEHQ: XK9D</div>
-    <div class="btn btn-tools">🎲 Randomizer</div>
-    <div class="btn btn-locator">📍 Locator</div>
-    <div class="btn btn-plug">🔌 The Plug</div>
-    <div class="btn btn-game">🎮 Game Master</div>
 
+    <!-- TCG Logo Image -->
     <div class="image-container">
-        <!-- Path relative to the working directory it gets opened from -->
-        <img src="app/public/cover.png" class="cover" alt="TCG" />
+        <!-- Relative path for the server to load -->
+        <img src="app/public/cover.png" class="cover" alt="TCG Mascot" />
+    </div>
+
+    <!-- UI Overlays -->
+    <div class="btn btn-room">📱 CRUISEHQ: XK9D</div>
+    <div class="btn-subtitle">Multiplayer AI Concierge</div>
+
+    <div class="live-status">
+        <div class="pulse"></div>
+        ElevenHacks
+    </div>
+
+    <div class="btn btn-voice">
+        <span class="btn-icon">🎙️</span> 9 Voice-Controlled UI Tools
+    </div>
+    
+    <div class="btn btn-tools">
+        <span class="btn-icon">👥</span> CruiseHQ Multiplayer Rooms
+    </div>
+    
+    <div class="btn btn-locator">
+        <span class="btn-icon">🕷️</span> Firecrawl Deep Fetch Pipeline
+    </div>
+    
+    <div class="btn btn-plug">
+        <span class="btn-icon">👁️</span> TCG Eyes: Live Visual Stream
+    </div>
+    
+    <div class="btn btn-game">
+        <span class="btn-icon">🎮</span> Game Master & Full Moderator
+    </div>
+
+    <!-- Stack Badges -->
+    <div class="tech-stack">
+        <div class="tech-badge">
+            <span class="btn-icon">🔊</span> Powered by ElevenLabs
+        </div>
+        <div class="tech-badge">
+            <span class="btn-icon">🕷️</span> Firecrawl Intelligence
+        </div>
+        <div class="tech-badge">
+            <span class="btn-icon">👁️</span> Gemini Vision
+        </div>
+        <div class="tech-badge">
+            <span class="btn-icon">⚡</span> Supabase Realtime
+        </div>
     </div>
 </body>
 </html>
