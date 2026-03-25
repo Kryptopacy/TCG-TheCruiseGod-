@@ -3,6 +3,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // TEMP: .next/server/vendor-chunks is filesystem-corrupted (Error 1392).
+  // Remove distDir after running chkdsk D: /f on next reboot.
+  distDir: '.next-dev',
   // Prevents Windows heap crash during build trace collection on large projects
   outputFileTracingExcludes: {
     '*': ['node_modules/@swc/**'],

@@ -673,7 +673,7 @@ const inlineInput: React.CSSProperties = {
 
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 
-export default function ToolsPanel({ activeTool: externalTool, activeGuests = [], groups = {} }: { activeTool?: Tool; activeGuests?: string[]; groups?: Record<string, string[]> }) {
+export default function ToolsPanel({ activeTool: externalTool, activeGuests = [], groups = {}, onClose }: { activeTool?: Tool; activeGuests?: string[]; groups?: Record<string, string[]>; onClose: () => void }) {
   const [activeTool, setActiveTool] = useState<Tool>(externalTool ?? 'home');
 
   useEffect(() => { if (externalTool) setActiveTool(externalTool); }, [externalTool]);
@@ -688,16 +688,19 @@ export default function ToolsPanel({ activeTool: externalTool, activeGuests = []
     }}>
       {/* Top bar */}
       <div style={{ width: '100%', display: 'flex', alignItems: 'center', padding: '20px 20px 0', gap: '12px', position: 'sticky', top: 0, background: 'rgba(13,6,30,0.95)', zIndex: 5 }}>
-        {activeTool !== 'home' && (
+        {activeTool !== 'home' ? (
           <button onClick={() => setActiveTool('home')} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#fff', borderRadius: '50%', width: '44px', height: '44px', fontSize: '1.2rem', cursor: 'pointer', flexShrink: 0 }}>←</button>
+        ) : (
+          <div style={{ width: '44px', height: '44px', flexShrink: 0 }} /> /* Spacer to keep title centered */
         )}
-        <h1 style={{ flex: 1, margin: 0, color: '#FFE600', fontSize: '1.6rem', fontWeight: 900, letterSpacing: '-0.5px' }}>
+        <h1 style={{ flex: 1, margin: 0, color: '#FFE600', fontSize: '1.6rem', fontWeight: 900, letterSpacing: '-0.5px', textAlign: 'center' }}>
           {activeTool === 'home' ? '🎲 Party Tools' : toolList.find(t => t.id === activeTool)?.label ?? ''}
         </h1>
+        <button onClick={onClose} style={{ background: 'rgba(255,42,42,0.15)', border: '1px solid rgba(255,42,42,0.4)', color: '#ff7070', borderRadius: '50%', width: '44px', height: '44px', fontSize: '1.2rem', cursor: 'pointer', flexShrink: 0, fontWeight: 900 }}>✕</button>
       </div>
 
       {/* Content */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', padding: '20px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', padding: '20px', paddingBottom: '140px' }}>
         {activeTool === 'home' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px', width: '100%', maxWidth: '380px' }}>
             {toolList.map(t => (

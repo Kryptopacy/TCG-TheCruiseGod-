@@ -69,8 +69,9 @@ export default function ConversationManager() {
   const [cohostRequests, setCohostRequests] = useState<string[]>([]);
   const [groups, setGroups] = useState<Record<string, string[]>>({});
   const [showGroupsModal, setShowGroupsModal] = useState(false);
-  // createClient() is a singleton — safe to call unconditionally.
-  const supabase = useRef(createClient());
+  // createClient() is a singleton — safe to call unconditionally (but we ensure it only runs once per component instance).
+  const supabase = useRef<ReturnType<typeof createClient> | null>(null);
+  if (!supabase.current) supabase.current = createClient();
   const roomChannelRef = useRef<any>(null);
   const conversationRef = useRef<typeof conversation | null>(null);
 
@@ -85,7 +86,7 @@ export default function ConversationManager() {
     // Load profile from Supabase user metadata (set on profile page)
     const loadProfile = async () => {
       try {
-        const { data: { user } } = await supabase.current.auth.getUser();
+        const { data: { user } } = await supabase.current!.auth.getUser();
         let nameToSet = '';
         let agentToSet = '';
         
@@ -202,7 +203,7 @@ export default function ConversationManager() {
     setRoomId(newRoomId);
 
     // Subscribe to Supabase Realtime Broadcast for this specific room
-    const channel = supabase.current.channel(`room:${newRoomId}`);
+    const channel = supabase.current!.channel(`room:${newRoomId}`);
     roomChannelRef.current = channel;
 
     // Local helper — reads from conversationRef so no stale-closure or hoisting issues.
@@ -280,7 +281,7 @@ export default function ConversationManager() {
       });
 
     return () => {
-      supabase.current.removeChannel(channel);
+      supabase.current!.removeChannel(channel);
     };
   }, [addMessage]);
 
@@ -328,12 +329,12 @@ export default function ConversationManager() {
   // Client tool handlers
   const handleCreateMemory = useCallback((params: Record<string, unknown>) => {
     const momentId = `share-${Date.now()}`;
-    const shareCaption = params.shareCaption as string | undefined;
+    const shareCaption = params.param_shareCaption as string | undefined;
     const moment: Memory = {
       id: momentId,
-      type: (params.type as Memory['type']) || 'moment',
-      title: (params.title as string) || 'TCG Moment',
-      content: (params.content as string) || '',
+      type: (params.param_type as Memory['type']) || 'moment',
+      title: (params.param_title as string) || 'TCG Moment',
+      content: (params.param_content as string) || '',
       mode: activeMode,
       timestamp: new Date().toISOString(),
     };
@@ -359,7 +360,7 @@ export default function ConversationManager() {
   }, [activeMode, captureAndUpload, addMessage]);
 
   const handleSwitchMode = useCallback((params: Record<string, unknown>) => {
-    const mode = params.mode as TCGMode;
+    const mode = params.param_mode as TCGMode;
     if (['locator', 'plug', 'game-master', 'tools'].includes(mode)) {
       setActiveMode(mode);
       if (mode !== 'game-master') setGameStatus(null);
@@ -371,7 +372,7 @@ export default function ConversationManager() {
   const [activeToolId, setActiveToolId] = useState<string | undefined>(undefined);
 
   const handleOpenTool = useCallback((params: Record<string, unknown>) => {
-    const tool = params.tool as string;
+    const tool = params.param_tool as string;
     const validTools = ['coin', 'dice', 'bottle', 'randomizer', 'timer'];
     if (validTools.includes(tool)) {
       setActiveMode('tools');
@@ -384,12 +385,12 @@ export default function ConversationManager() {
   const handleUpdateGameState = useCallback((params: Record<string, unknown>) => {
     setGameStatus(prev => {
       const updated: TCGGameStatus = {
-        gameName: (params.gameName as string) || prev?.gameName || 'Game Session',
-        status: (params.status as TCGGameStatus['status']) || prev?.status || 'playing',
-        players: (params.players as Player[]) || prev?.players || [],
-        currentTurn: (params.currentTurn as string) || prev?.currentTurn,
-        timer: params.timer !== undefined ? (params.timer as number) : prev?.timer,
-        rulesSummary: (params.rulesSummary as string) || prev?.rulesSummary,
+        gameName: (params.param_gameName as string) || prev?.gameName || 'Game Session',
+        status: (params.param_status as TCGGameStatus['status']) || prev?.status || 'playing',
+        players: (params.param_players as Player[]) || prev?.players || [],
+        currentTurn: (params.param_currentTurn as string) || prev?.currentTurn,
+        timer: params.param_timer !== undefined ? (params.param_timer as number) : prev?.timer,
+        rulesSummary: (params.param_rulesSummary as string) || prev?.rulesSummary,
       };
       return updated;
     });
@@ -399,16 +400,16 @@ export default function ConversationManager() {
   const handleDisplayResults = useCallback((params: Record<string, unknown>) => {
     // Agent may send results as a JSON string (since ElevenLabs params are strings)
     let results: SearchResult[] = [];
-    if (typeof params.results === 'string') {
-      try { results = JSON.parse(params.results); } catch { results = []; }
-    } else if (Array.isArray(params.results)) {
-      results = params.results as SearchResult[];
+    if (typeof params.param_results === 'string') {
+      try { results = JSON.parse(params.param_results); } catch { results = []; }
+    } else if (Array.isArray(params.param_results)) {
+      results = params.param_results as SearchResult[];
     }
     setCurrentResults({
       success: true,
       results,
-      type: (params.type as UnifiedSearchResponse['type']) || 'locations',
-      query: (params.query as string) || '',
+      type: (params.param_type as UnifiedSearchResponse['type']) || 'locations',
+      query: (params.param_query as string) || '',
       count: results.length,
     });
     return 'Results displayed in UI';
@@ -422,15 +423,15 @@ export default function ConversationManager() {
   }, []);
 
   const handleRandomizeGroupsTool = useCallback((params: Record<string, unknown>) => {
-    const numGroups = Math.max(2, Number(params.numGroups) || 2);
+    const numGroups = Math.max(2, Number(params.param_numGroups) || 2);
     if (activeGuests.length < 2) return 'Not enough guests in the room to split into groups.';
     handleRandomizeGroups(numGroups);
     return `Split ${activeGuests.length} guests into ${numGroups} groups!`;
   }, [activeGuests]);
 
   const handleAnalyzeImage = useCallback((params: Record<string, unknown>) => {
-    const task = (params.task as VisionTask) || 'general';
-    const prompt = params.prompt as string | undefined;
+    const task = (params.param_task as VisionTask) || 'general';
+    const prompt = params.param_prompt as string | undefined;
     setCameraTask(task);
     setCameraPrompt(prompt);
     setShowCamera(true);
@@ -476,6 +477,7 @@ export default function ConversationManager() {
           captureScreen: async () => {
             addMessage('system', '📸 Capturing screen memory...');
             await handleCreateMemory({ type: 'moment', title: 'Captured by Voice', shareCaption: 'TCG grabbed this legendary screenshot.' });
+            return 'Screen captured successfully.';
           },
         },
         overrides: {
@@ -723,7 +725,12 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
 
       {/* Tools Panel Overlay (shown when Tools mode is active) */}
       {activeMode === 'tools' && (
-        <ToolsPanel activeTool={activeToolId as any} activeGuests={activeGuests} groups={groups} />
+        <ToolsPanel 
+          activeTool={activeToolId as any} 
+          activeGuests={activeGuests} 
+          groups={groups} 
+          onClose={() => setActiveMode('locator')}
+        />
       )}
 
       {/* Settings Modal */}
@@ -789,7 +796,19 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
       )}
 
       {/* 4. The Aura (Waveform behind character) */}
-      <div style={{ position: 'absolute', bottom: '10%', left: '50%', transform: 'translateX(-50%)', width: '100vw', height: '40vh', zIndex: 1, pointerEvents: 'none', opacity: 0.8 }}>
+      <div style={{ 
+        position: activeMode === 'tools' ? 'fixed' : 'absolute', 
+        bottom: activeMode === 'tools' ? '20px' : '10%',
+        left: activeMode === 'tools' ? 'auto' : '50%',
+        right: activeMode === 'tools' ? '20px' : 'auto',
+        transform: activeMode === 'tools' ? 'none' : 'translateX(-50%)',
+        width: activeMode === 'tools' ? '120px' : '100vw', 
+        height: activeMode === 'tools' ? '120px' : '40vh', 
+        zIndex: activeMode === 'tools' ? 99 : 1, 
+        pointerEvents: 'none', 
+        opacity: activeMode === 'tools' ? 1 : 0.8,
+        transition: 'all 0.4s cubic-bezier(0.25, 1, 0.5, 1)'
+      }}>
         <WaveformVisualizer 
           isSpeaking={conversation.isSpeaking} 
           isListening={conversation.status === 'connected' && !conversation.isSpeaking}
@@ -809,23 +828,35 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
       {/* 5. Majestic Anchored Character Avatar */}
       <div 
         style={{ 
-          position: 'absolute', 
-          bottom: '-5vh',
-          left: '50%', 
-          transform: `translateX(-50%) ${conversation.isSpeaking ? 'scale(1.05)' : 'scale(1)'}`, 
-          zIndex: 5, 
-          width: 'min(85vw, 420px)',
+          position: activeMode === 'tools' ? 'fixed' : 'absolute', 
+          bottom: activeMode === 'tools' ? '30px' : '-5vh',
+          left: activeMode === 'tools' ? 'auto' : '50%', 
+          right: activeMode === 'tools' ? '30px' : 'auto',
+          transform: activeMode === 'tools' 
+            ? `scale(${conversation.isSpeaking ? 1.05 : 1})` 
+            : `translateX(-50%) scale(${conversation.isSpeaking ? 1.05 : 1})`, 
+          zIndex: activeMode === 'tools' ? 100 : 5, 
+          width: activeMode === 'tools' ? '100px' : 'min(85vw, 420px)',
           cursor: 'pointer',
-          transition: 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+          transition: 'all 0.4s cubic-bezier(0.25, 1, 0.5, 1)',
           animation: conversation.isSpeaking ? 'speaking-bounce 1s infinite ease-in-out' : 'idle-float 5s infinite ease-in-out',
           filter: conversation.isSpeaking 
                   ? 'drop-shadow(0 0 40px rgba(255, 230, 0, 0.4))' 
                   : (conversation.status === 'connected' ? 'drop-shadow(0 0 20px rgba(255, 255, 255, 0.15))' : 'drop-shadow(0 -10px 30px rgba(0,0,0,0.8))')
         }}
         onClick={toggleConversation}
-        onPointerDown={(e) => e.currentTarget.style.transform = `translateX(-50%) scale(0.95)`}
-        onPointerUp={(e) => e.currentTarget.style.transform = `translateX(-50%) scale(1)`}
-        onPointerLeave={(e) => e.currentTarget.style.transform = `translateX(-50%) scale(1)`}
+        onPointerDown={(e) => {
+          if (activeMode !== 'tools') e.currentTarget.style.transform = `translateX(-50%) scale(0.95)`;
+          else e.currentTarget.style.transform = `scale(0.95)`;
+        }}
+        onPointerUp={(e) => {
+          if (activeMode !== 'tools') e.currentTarget.style.transform = `translateX(-50%) scale(1)`;
+          else e.currentTarget.style.transform = `scale(1)`;
+        }}
+        onPointerLeave={(e) => {
+          if (activeMode !== 'tools') e.currentTarget.style.transform = `translateX(-50%) scale(1)`;
+          else e.currentTarget.style.transform = `scale(1)`;
+        }}
         title={conversation.status === 'connected' ? "Tap to Disconnect" : "Tap to Connect"}
       >
         <img 
@@ -1123,13 +1154,11 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
               <h2 className="gradient-text" style={{ fontSize: '2rem', fontWeight: 900, marginBottom: '8px', background: 'var(--gradient-magenta)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.5px' }}>
                 Join CruiseHQ
               </h2>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: '24px', lineHeight: 1.5 }}>
+              <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.95rem', marginBottom: '24px', lineHeight: 1.5 }}>
                 Scan to join <strong>{roomId}</strong>. Chat with everyone, or submit private truths, dares, charades, and songs!
               </p>
               
               <div style={{ background: '#fff', padding: '16px', borderRadius: '24px', marginBottom: '32px', display: 'inline-block', boxShadow: '0 0 30px rgba(224, 64, 251, 0.3)' }}>
-                {/* Dynamically generating the QR Code linking to the Guest UI route */}
-                {/* Fallback host URL for local testing or production */}
                 {typeof window !== 'undefined' && (
                   <img 
                     src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(`${window.location.origin}/room/${roomId}`)}`} 

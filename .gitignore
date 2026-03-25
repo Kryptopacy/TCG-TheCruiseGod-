@@ -4,6 +4,7 @@ app/node_modules/
 
 # Next.js
 app/.next/
+app/.next-dev/
 app/out/
 
 # TCG Project Docs & Setup (Excluded for production)

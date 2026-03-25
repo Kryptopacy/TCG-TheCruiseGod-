@@ -195,4 +195,75 @@ export default function ChatFallback({
                           fontSize: '0.65rem',
                           fontWeight: 800,
                           cursor: 'pointer',
-                    
+                        }}
+                      >
+                        PUSH
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        <div style={{ height: '20px' }} />
+      </div>
+
+      {/* Input row */}
+      <form
+        onSubmit={handleSubmit}
+        style={{
+          padding: '12px 14px',
+          display: 'flex',
+          gap: '10px',
+          alignItems: 'center',
+          background: 'rgba(20, 5, 5, 0.4)',
+          borderTop: '1px solid rgba(255,150,0,0.1)',
+          backdropFilter: 'blur(10px)',
+          WebkitBackdropFilter: 'blur(10px)',
+        }}
+      >
+        <div style={{ flex: 1, position: 'relative' }}>
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            disabled={!isConnected}
+            placeholder={isConnected ? "Message TCG..." : "Offline - Wait for link..."}
+            style={{
+              width: '100%',
+              background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,150,0,0.2)',
+              borderRadius: '16px',
+              padding: '10px 16px',
+              color: '#fff',
+              fontSize: '0.88rem',
+              outline: 'none',
+              transition: 'border-color 0.2s',
+            }}
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={!input.trim() || !isConnected}
+          style={{
+            background: 'linear-gradient(135deg, #FF8C00, #CC1010)',
+            color: '#fff',
+            border: 'none',
+            width: '40px',
+            height: '40px',
+            borderRadius: '14px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            opacity: (!input.trim() || !isConnected) ? 0.3 : 1,
+            boxShadow: '0 4px 12px rgba(204, 16, 16, 0.3)',
+          }}
+        >
+          🔥
+        </button>
+      </form>
+    </div>
+  );
+}
