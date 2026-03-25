@@ -36,24 +36,32 @@ export default function ModeSelector({ activeMode, onModeChange }: ModeSelectorP
               cursor: 'pointer',
               padding: '10px 20px',
               borderRadius: '30px',
+              color: isActive ? '#fff' : 'rgba(255, 255, 255, 0.6)',
+              fontWeight: isActive ? 800 : 600,
               background: isActive
                 ? mode.id === 'locator' ? 'rgba(0, 240, 255, 0.15)'
                   : mode.id === 'plug' ? 'rgba(255, 215, 0, 0.15)'
                   : mode.id === 'tools' ? 'rgba(255, 140, 0, 0.15)'
                     : 'rgba(248, 0, 177, 0.15)'
-                : 'rgba(255, 255, 255, 0.03)',
-              borderColor: isActive
+                : 'rgba(255, 255, 255, 0.05)',
+              border: `1px solid ${isActive
                 ? mode.id === 'locator' ? 'rgba(0, 240, 255, 0.6)'
                   : mode.id === 'plug' ? 'rgba(255, 215, 0, 0.6)'
                   : mode.id === 'tools' ? 'rgba(255, 140, 0, 0.6)'
                     : 'rgba(248, 0, 177, 0.6)'
-                : 'rgba(255, 255, 255, 0.08)',
-              transition: 'all 0.2s',
+                : 'rgba(255, 255, 255, 0.1)'}`,
+              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
               transform: isActive ? 'scale(1.05)' : 'scale(1)',
+              boxShadow: isActive ? `0 4px 12px ${
+                mode.id === 'locator' ? 'rgba(0, 240, 255, 0.2)'
+                  : mode.id === 'plug' ? 'rgba(255, 215, 0, 0.2)'
+                  : mode.id === 'tools' ? 'rgba(255, 140, 0, 0.2)'
+                    : 'rgba(248, 0, 177, 0.2)'
+              }` : 'none',
             }}
             aria-label={`Switch to ${mode.label} mode`}
           >
-            <span>{mode.icon}</span>
+            <span style={{ marginRight: '6px' }}>{mode.icon}</span>
             <span>{mode.label}</span>
           </button>
         );

@@ -518,12 +518,12 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
       {/* 1. Radical Multi-Layer Background */}
       <div className="radical-bg" />
 
-      {/* 2. Distinct White Header Layer: Logo and Location */}
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20, background: '#ffffff', border: '1px solid rgba(0,0,0,0.08)', padding: 'max(16px, env(safe-area-inset-top)) 20px 16px', boxShadow: '0 4px 24px rgba(0,0,0,0.25)', borderRadius: '24px', margin: '8px' }}>
+      {/* 2. Distinct Header Layer: Logo and Location */}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20, background: 'rgba(10, 10, 20, 0.85)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.08)', padding: 'max(16px, env(safe-area-inset-top)) 20px 16px', boxShadow: '0 4px 30px rgba(0,0,0,0.5)', borderRadius: '24px', margin: '8px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
           {/* Logo */}
           <div style={{ width: 'min(140px, 30vw)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <img src="/TCG.png" alt="TCG Logo" style={{ width: '100%', height: 'auto', filter: 'drop-shadow(0 2px 8px rgba(0, 0, 0, 0.15))' }} />
+            <img src="/TCG.PNG" alt="TCG Logo" style={{ width: '100%', height: 'auto', filter: 'drop-shadow(0 2px 8px rgba(0, 0, 0, 0.5))' }} />
             <button 
               onClick={() => setShowSettings(true)}
               style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: '4px', opacity: 0.7, color: '#fff' }}
@@ -559,12 +559,12 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
 
             {/* Location Input/Badge */}
               {showLocationInput ? (
-                <div style={{ background: '#fffbe6', padding: '8px 12px', display: 'flex', gap: '8px', alignItems: 'center', width: '100%', maxWidth: '400px', animation: 'slide-down-toast 0.2s', borderRadius: '16px', border: '2px solid #FFE600', boxShadow: '0 4px 12px rgba(255,230,0,0.15)' }}>
+                <div style={{ background: 'rgba(255, 230, 0, 0.1)', padding: '8px 12px', display: 'flex', gap: '8px', alignItems: 'center', width: '100%', maxWidth: '400px', animation: 'slide-down-toast 0.2s', borderRadius: '16px', border: '1px solid rgba(255, 230, 0, 0.3)', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }}>
                   <textarea
                     value={location}
                     onChange={(e) => setLocation(e.target.value)}
                     placeholder="Edit full address..."
-                    style={{ flex: 1, background: 'transparent', border: 'none', color: '#000', fontSize: '0.85rem', outline: 'none', minHeight: '40px', resize: 'none', fontFamily: 'inherit', padding: '4px 0' }}
+                    style={{ flex: 1, background: 'transparent', border: 'none', color: '#fff', fontSize: '0.85rem', outline: 'none', minHeight: '40px', resize: 'none', fontFamily: 'inherit', padding: '4px 0' }}
                     rows={2}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey && location.trim()) {
@@ -583,7 +583,7 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
               ) : (
                 <button
                   onClick={() => setShowLocationInput(true)}
-                  style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: 'var(--radius-full)', border: '2px solid #FFE600', background: '#fffbe6', color: '#8a6000', fontSize: '0.75rem', maxWidth: '100%', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', fontWeight: 700, boxShadow: '0 2px 8px rgba(255,230,0,0.2)' }}
+                  style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: 'var(--radius-full)', border: '1px solid rgba(255, 230, 0, 0.3)', background: 'rgba(255, 230, 0, 0.1)', color: 'var(--accent-gold)', fontSize: '0.75rem', maxWidth: '100%', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', fontWeight: 700, boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}
                 >
                   📍 {location || "Set Your Location"}
                 </button>
@@ -692,7 +692,7 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
         title={conversation.status === 'connected' ? "Tap to Disconnect" : "Tap to Connect"}
       >
         <img 
-          src="/TCG character.png" 
+          src="/TCG character.PNG" 
           alt="The Cruise God"
           style={{ width: '100%', height: 'auto', display: 'block', pointerEvents: 'none' }} 
         />
