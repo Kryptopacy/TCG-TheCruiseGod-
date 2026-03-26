@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import { motion, AnimatePresence } from 'framer-motion';
+import CruiseHQ from '@/app/components/CruiseHQ';
 
 // Mirror only what we need on the guest side
 type GroupState = { members: string[]; leader: string | null };
@@ -284,47 +285,85 @@ export default function GuestRoom({ params }: { params: Promise<{ id: string }> 
           </form>
         ) : (
           <>
-            {/* ── Group Status Card ── */}
+            <CruiseHQ
+              roomId={roomId}
+              currentUser={author}
+              groups={groups}
+              activeGuests={activeGuests}
+              isOpen={true}
+              onClose={() => {}}
+              isHost={false}
+            />
+
+            {/* Self-select mode override (High Z-Index) */}
             <AnimatePresence mode="wait">
-              {/* Self-select mode: show group picker */}
               {selfSelectMode && groupNames.length > 0 && !myGroup && (
                 <motion.div
                   key="self-select"
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 10 }}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
                   style={{
-                    background: 'rgba(123,97,255,0.12)', border: '1.5px solid rgba(123,97,255,0.4)',
-                    borderRadius: '20px', padding: '20px', textAlign: 'center',
+                    position: 'fixed', inset: 0, zIndex: 1000,
+                    background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                    padding: '24px'
                   }}
                 >
-                  <p style={{ fontSize: '0.75rem', fontWeight: 800, letterSpacing: '2px', color: '#A78BFA', textTransform: 'uppercase', marginBottom: '8px' }}>
-                    ✋ Pick Your Group
-                  </p>
-                  <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem', marginBottom: '16px' }}>
-                    The host has opened group selection. Tap to join a group!
-                  </p>
-                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                    {groupNames.map((gName, gi) => {
-                      const color = GROUP_COLORS[gi % GROUP_COLORS.length];
-                      return (
-                        <button
-                          key={gName}
-                          onClick={() => handleSelfSelectGroup(gName)}
-                          style={{
-                            padding: '12px 24px', borderRadius: '12px', border: `2px solid ${color}`,
-                            background: `${color}15`, color, fontWeight: 900, fontSize: '1rem',
-                            cursor: 'pointer', flex: 1, minWidth: '120px',
-                          }}
-                        >
-                          {gName}
-                        </button>
-                      );
-                    })}
+                  <div style={{ background: 'rgba(123,97,255,0.15)', border: '1.5px solid rgba(123,97,255,0.5)', borderRadius: '24px', padding: '30px', textAlign: 'center', maxWidth: '400px', width: '100%', boxShadow: '0 10px 40px rgba(0,0,0,0.5)' }}>
+                    <p style={{ fontSize: '0.85rem', fontWeight: 800, letterSpacing: '1px', color: '#A78BFA', textTransform: 'uppercase', marginBottom: '12px' }}>
+                      ✋ Pick Your Group
+                    </p>
+                    <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '1rem', marginBottom: '24px', lineHeight: 1.5 }}>
+                      The host has opened group selection. Tap to join a group!
+                    </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {groupNames.map((gName, gi) => {
+                        const color = GROUP_COLORS[gi % GROUP_COLORS.length];
+                        return (
+                          <button
+                            key={gName}
+                            onClick={() => handleSelfSelectGroup(gName)}
+                            style={{
+                              padding: '16px 24px', borderRadius: '16px', border: `2px solid ${color}`,
+                              background: `${color}15`, color, fontWeight: 900, fontSize: '1.1rem',
+                              cursor: 'pointer', width: '100%',
+                            }}
+                          >
+                            Join {gName}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </motion.div>
               )}
+            </AnimatePresence>
 
+            {/* Floating Co-Host Controls */}
+            <div style={{ position: 'fixed', top: '30px', right: '30px', zIndex: 300, display: 'flex', gap: '8px' }}>
+              {!isCoHost && !isRequestingCoHost && (
+                <button
+                  type="button"
+                  onClick={handleRequestCoHost}
+                  style={{ background: 'rgba(5,5,15,0.9)', border: '1px solid rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.6)', padding: '8px 16px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer', backdropFilter: 'blur(10px)', boxShadow: '0 4px 12px rgba(0,0,0,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+                >
+                  🎙️ Request Co-Host
+                </button>
+              )}
+              {isRequestingCoHost && (
+                <button
+                  type="button"
+                  disabled
+                  style={{ background: 'rgba(5,5,15,0.9)', border: '1px solid rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.4)', padding: '8px 16px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 800, backdropFilter: 'blur(10px)', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+                >
+                  ⏳ Waiting...
+                </button>
+              )}
+            </div>
+
+            {/* ── Group Status Card ── */}
+            <AnimatePresence mode="wait">
               {/* Assigned group display */}
               {myGroup && myGroupState && (
                 <motion.div
@@ -484,17 +523,6 @@ export default function GuestRoom({ params }: { params: Promise<{ id: string }> 
                       >
                         {isSending ? 'SENDING...' : connected ? 'BLAST TO HOST 🚀' : 'CONNECTING...'}
                       </motion.button>
-
-                      {!isCoHost && (
-                        <button
-                          type="button"
-                          onClick={handleRequestCoHost}
-                          disabled={isRequestingCoHost}
-                          style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.6)', padding: '12px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}
-                        >
-                          {isRequestingCoHost ? 'WAITING FOR APPROVAL...' : '🎙️ REQUEST CO-HOST (REMOTE MIC)'}
-                        </button>
-                      )}
                     </div>
                   )}
                 </AnimatePresence>

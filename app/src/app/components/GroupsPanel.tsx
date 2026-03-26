@@ -9,11 +9,12 @@ const GROUP_COLORS = ['#FFE600', '#FF8C00', '#FF2A2A', '#00E5FF', '#7B61FF', '#F
 interface GroupsPanelProps {
   activeGuests: string[];
   groups: Record<string, GroupState>;
-  onCreateGroups: (numGroups: number, mode: 'auto' | 'self-select' | 'smart', param?: string) => void;
-  onClearGroups: () => void;
-  onSetLeader: (groupName: string, leader: string) => void;
-  onMoveGuest: (guest: string, toGroup: string | null) => void;
-  onStartLeaderPoll: (groupName: string) => void;
+  isHost?: boolean;
+  onCreateGroups?: (numGroups: number, mode: 'auto' | 'self-select' | 'smart', param?: string) => void;
+  onClearGroups?: () => void;
+  onSetLeader?: (groupName: string, leader: string) => void;
+  onMoveGuest?: (guest: string, toGroup: string | null) => void;
+  onStartLeaderPoll?: (groupName: string) => void;
 }
 
 function getGuestGroup(guest: string, groups: Record<string, GroupState>): string | null {
@@ -26,6 +27,7 @@ function getGuestGroup(guest: string, groups: Record<string, GroupState>): strin
 export default function GroupsPanel({
   activeGuests,
   groups,
+  isHost = true,
   onCreateGroups,
   onClearGroups,
   onSetLeader,
@@ -35,7 +37,8 @@ export default function GroupsPanel({
   const [numGroups, setNumGroups] = useState(2);
   const [mode, setMode] = useState<'auto' | 'self-select' | 'smart'>('auto');
   const [sortParam, setSortParam] = useState('');
-  const [activeSection, setActiveSection] = useState<'create' | 'roster' | 'groups'>('create');
+  // Guests default to 'groups' or 'roster', host defaults to 'create' (setup)
+  const [activeSection, setActiveSection] = useState<'create' | 'roster' | 'groups'>(isHost ? 'create' : 'roster');
 
   const groupNames = Object.keys(groups);
   const hasGroups = groupNames.length > 0;
@@ -64,7 +67,7 @@ export default function GroupsPanel({
 
       {/* ── Section Switcher ── */}
       <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
-        {(['create', 'roster', 'groups'] as const).map(s => (
+        {(['create', 'roster', 'groups'] as const).filter(s => isHost || s !== 'create').map(s => (
           <button
             key={s}
             onClick={() => setActiveSection(s)}
@@ -153,7 +156,7 @@ export default function GroupsPanel({
             {/* Action Buttons */}
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
-                onClick={() => onCreateGroups(numGroups, mode, mode === 'smart' ? sortParam : undefined)}
+                onClick={() => onCreateGroups?.(numGroups, mode, mode === 'smart' ? sortParam : undefined)}
                 disabled={activeGuests.length < 2}
                 style={{
                   flex: 1, padding: '14px', borderRadius: '12px', border: 'none',
@@ -206,10 +209,10 @@ export default function GroupsPanel({
                     <span style={{ flex: 1, color: '#fff', fontWeight: 700, fontSize: '0.88rem' }}>
                       {isLeader ? '👑 ' : ''}{guest}
                     </span>
-                    {hasGroups ? (
+                    {hasGroups && isHost ? (
                       <select
                         value={assignedGroup || ''}
-                        onChange={e => onMoveGuest(guest, e.target.value || null)}
+                        onChange={e => onMoveGuest?.(guest, e.target.value || null)}
                         style={{
                           background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,200,0,0.2)',
                           color: assignedGroup ? '#FFE600' : 'rgba(255,255,255,0.4)',
@@ -222,6 +225,10 @@ export default function GroupsPanel({
                           <option key={gn} value={gn}>{gn}</option>
                         ))}
                       </select>
+                    ) : hasGroups && !isHost ? (
+                       <span style={{ fontSize: '0.75rem', color: assignedGroup ? GROUP_COLORS[groupNames.indexOf(assignedGroup) % GROUP_COLORS.length] : 'rgba(255,255,255,0.3)', fontWeight: assignedGroup ? 800 : 400 }}>
+                         {assignedGroup || 'Unassigned'}
+                       </span>
                     ) : (
                       <span style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.25)', fontStyle: 'italic' }}>
                         No groups yet
@@ -315,14 +322,14 @@ export default function GroupsPanel({
                       )}
                     </div>
 
-                    {/* Leader Actions */}
+                    {/* Leader Actions — available to all members */}
                     {state.members.length >= 2 && (
                       <div style={{ display: 'flex', gap: '8px', padding: '0 16px 14px' }}>
                         <button
                           onClick={() => {
                             const eligible = state.members.filter(m => m !== leader);
                             if (eligible.length === 0) return;
-                            onSetLeader(gName, eligible[Math.floor(Math.random() * eligible.length)]);
+                            onSetLeader?.(gName, eligible[Math.floor(Math.random() * eligible.length)]);
                           }}
                           style={{
                             flex: 1, padding: '8px', borderRadius: '10px',
@@ -333,7 +340,7 @@ export default function GroupsPanel({
                           🎲 Random Leader
                         </button>
                         <button
-                          onClick={() => onStartLeaderPoll(gName)}
+                          onClick={() => onStartLeaderPoll?.(gName)}
                           style={{
                             flex: 1, padding: '8px', borderRadius: '10px',
                             background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)',

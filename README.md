@@ -106,11 +106,10 @@ The agent is aware of all guests in real-time. When someone joins or leaves, it 
 
 Point your camera at anything and TCG analyzes it:
 
-- **Bill Scanner** — Reads receipt totals, splits per person
-- **Drink Check** — Verifies bottle authenticity (hologram, label quality)
-- **Product Scanner** — Instantly looks up barcodes and verifies NAFDAC numbers
+- **Bill Scanner** — Reads receipt totals and extracts currency, splitting the bill globally
+- **Actionable Drink Checks** — OCR extracts barcodes (queried via Open Food Facts API) and NAFDAC numbers (verified via Firecrawl scrape) to confirm product authenticity
 - **Game Vision** — Identifies board/card game state and suggests next moves
-- **General** — Contextual analysis for any social scenario
+- **User-Directed Analysis** — Users can type custom instructions while snapping a photo to override the default task logic
 
 Powered by Gemini Vision API with structured JSON output fed back into the voice conversation.
 
@@ -125,7 +124,7 @@ All voice-activatable and multiplayer-aware:
 | 🍾 Spin the Bottle | SVG wheel synced with room guests |
 | 🎯 Randomizer | Slot-machine picker, loadable from guest list |
 | ⏱ Timer / Stopwatch | Circular progress, configurable countdown |
-| 💰 Bill Splitter | Tip presets, per-person calculation |
+| 💰 Bill Splitter | Global location-aware currency calculation |
 | 🃏 Truth or Dare | 3 intensity levels (Mild / Spicy / Savage) |
 | 🎭 Charades | 4 categories including Hardcore |
 | 🏆 Scoreboard | Auto-synced with CruiseHQ guests |
@@ -176,8 +175,9 @@ A slide-up transcript drawer provides full text chat. Users can type messages (r
 
 External APIs:
   • ElevenLabs Conversational AI (voice + client tools)
-  • Firecrawl Search API (live web scraping)
+  • Firecrawl Search API (live web scraping + NAFDAC portal bypassing)
   • Gemini Vision API (image analysis)
+  • Open Food Facts API (global barcode product lookup)
   • Google Maps Geocoding (reverse location lookup)
   • Upstash Redis (caching + rate limiting)
   • Supabase (PostgreSQL, Realtime, Auth, Storage)
@@ -190,13 +190,14 @@ External APIs:
 |---|---|
 | Framework | Next.js 15 (App Router, Edge Runtime) |
 | Voice AI | ElevenLabs Conversational AI (`@elevenlabs/react`) |
-| Live Search | Firecrawl Search API v1 |
+| Live Search | Firecrawl Search API / Scrape API |
 | Database | Supabase PostgreSQL with RLS |
 | Realtime | Supabase Channels (Presence + Broadcast) |
 | Auth | Supabase Auth (email/password) |
 | Storage | Supabase Storage (trophy screenshots) |
 | Caching | Upstash Redis |
 | Vision | Google Gemini 2.5 Flash |
+| External Data | Open Food Facts (Barcodes) |
 | Geocoding | Google Maps API |
 | Animations | Framer Motion |
 | Monitoring | Sentry |
@@ -308,5 +309,6 @@ The Firecrawl integration goes far beyond a basic search wrapper:
 
 - **Dynamic Query Engine** — Translates conversational intent into structured search queries with contextual modifiers (energy level, urgency, player count)
 - **Selective Deep Scrape** — Game searches request `markdown` format to extract full rule sets for voice readback
+- **Verification Scraper** — The Vision API uses Firecrawl's `/v1/scrape` endpoint to bypass CORS and load NAFDAC portals, parsing raw Markdown back to authenticate scanned products
 - **3-Tier Cache** — Supabase (7-day) → Redis (15-min) → Firecrawl API. Aggressively mitigates rate limits and costs
 - **Background Persistence** — Fresh results are asynchronously saved to Supabase tables (`tcg_locations`, `tcg_games`, `tcg_plugs`) for future instant retrieval

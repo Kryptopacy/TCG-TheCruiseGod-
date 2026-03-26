@@ -7,9 +7,6 @@ app/.next/
 app/.next-dev/
 app/out/
 
-# TCG Project Docs & Setup (Excluded for production)
-implementation_plan*
-
 # Environment Files
 .env*.local
 app/.env*.local
@@ -19,3 +16,22 @@ app/.env*.local
 *.pem
 /tmp/
 launch-video/
+
+# Agent internals (skills, workflows - not for remote repo)
+.agents/
+
+# Loose markdown scratch/internal files
+implementation_plan*
+audit_report.md
+elevenlabs_agent_setup.md
+elevenlabs_agent_setup_final.md
+ELEVENLABS_SETUP_FINAL.md
+DEVTO_ARTICLE.md
+POST_HACKATHON_FEATURES.md
+submission_details.md
+video_script.md
+skills-lock.json
+
+# Explicitly tracked (referenced in README)
+!DOCS.md
+!elevenlabs_json_tools.md

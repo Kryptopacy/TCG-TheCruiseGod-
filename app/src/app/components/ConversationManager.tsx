@@ -255,6 +255,7 @@ Greet them with energy right now! Be warm, hype, and brief.`;
   }, [addMessage]);
 
   const conversation = useConversation({
+    micMuted: isMicMuted,
     onConnect: () => {
       console.log('[TCG] Connected to ElevenLabs');
       setErrorMessage(null);
@@ -538,6 +539,15 @@ Greet them with energy right now! Be warm, hype, and brief.`;
           randomizeGroups: handleRandomizeGroupsTool,
           setGroupLeader: handleSetGroupLeaderTool,
           analyzeImage: handleAnalyzeImage,
+          stopListening: async () => {
+            if (!isMicMuted) toggleMicMute();
+            addMessage('system', '🔇 You told TCG to stop listening. Tap the mic to unmute.');
+            return 'Mic muted successfully.';
+          },
+          getAutoLocation: async () => {
+            handleGetLocation();
+            return 'Fetching device location... User will be prompted if permission is missing.';
+          },
           captureScreen: async () => {
             addMessage('system', '📸 Capturing screen memory...');
             await handleCreateMemory({ type: 'moment', title: 'Captured by Voice', shareCaption: 'TCG grabbed this legendary screenshot.' });
@@ -860,7 +870,16 @@ Greet them with energy right now! Be warm, hype, and brief.`;
           <img
             src="/tcg-character.png"
             alt="The Cruise God"
-            style={{ width: '100%', height: 'auto', display: 'block', pointerEvents: 'none' }}
+            onClick={() => {
+              if (isMicMuted) toggleMicMute();
+            }}
+            style={{ 
+              width: '100%', 
+              height: 'auto', 
+              display: 'block', 
+              pointerEvents: isMicMuted ? 'auto' : 'none',
+              cursor: isMicMuted ? 'pointer' : 'default'
+            }}
           />
           {/* Vision eye hotspot — overlaid on visor area */}
           {isStarted && (

@@ -429,14 +429,14 @@ Elects a specific guest as the leader of a group.
 
 ---
 
-### 8. `analyzeImage`
-Opens the camera for OCR/Vision — bill scanning, drink checks, game vision.
+### 9. `analyzeImage`
+Opens the camera for OCR/Vision — bill scanning, custom instructions, drink checks, game vision.
 
 ```json
 {
   "type": "client",
   "name": "analyzeImage",
-  "description": "Opens the device camera to capture and analyze an image with AI vision. Use for: splitting bills by scanning a receipt, verifying drinks/medicines by scanning barcodes or NAFDAC numbers, analyzing a board/card game state, or any visual question.",
+  "description": "Opens the device camera to capture and analyze an image with AI vision. Use for: splitting bills by scanning a receipt, verifying drinks/medicines by scanning barcodes or NAFDAC numbers, analyzing a board/card game state, answering a custom user question about their surroundings, or any general visual context.",
   "disable_interruptions": false,
   "force_pre_tool_speech": "auto",
   "tool_call_sound": null,
@@ -479,7 +479,7 @@ Opens the camera for OCR/Vision — bill scanning, drink checks, game vision.
 
 ---
 
-### 9. `captureScreen`
+### 10. `captureScreen`
 Captures a full-screen screenshot and saves it to the Trophy Room.
 
 ```json

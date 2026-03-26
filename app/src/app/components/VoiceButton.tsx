@@ -6,9 +6,10 @@ interface VoiceButtonProps {
   status: 'idle' | 'connecting' | 'listening' | 'speaking' | 'processing';
   onClick: () => void;
   disabled?: boolean;
+  isMuted?: boolean;
 }
 
-export default function VoiceButton({ status, onClick, disabled }: VoiceButtonProps) {
+export default function VoiceButton({ status, onClick, disabled, isMuted }: VoiceButtonProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animFrameRef = useRef<number>(0);
 
@@ -49,7 +50,10 @@ export default function VoiceButton({ status, onClick, disabled }: VoiceButtonPr
 
       // Main button circle
       const gradient = ctx.createRadialGradient(cx, cy - 10, 0, cx, cy, 48);
-      if (status === 'idle' || status === 'connecting') {
+      if (isMuted) {
+        gradient.addColorStop(0, 'rgba(204, 16, 16, 0.4)');
+        gradient.addColorStop(1, 'rgba(204, 16, 16, 0.15)');
+      } else if (status === 'idle' || status === 'connecting') {
         gradient.addColorStop(0, 'rgba(0, 229, 255, 0.15)');
         gradient.addColorStop(1, 'rgba(0, 229, 255, 0.05)');
       } else if (status === 'listening') {
@@ -67,16 +71,36 @@ export default function VoiceButton({ status, onClick, disabled }: VoiceButtonPr
       ctx.arc(cx, cy, 48, 0, Math.PI * 2);
       ctx.fillStyle = gradient;
       ctx.fill();
-      ctx.strokeStyle = status === 'speaking'
-        ? 'rgba(224, 64, 251, 0.6)'
-        : status === 'listening'
-          ? 'rgba(0, 229, 255, 0.6)'
-          : 'rgba(255, 255, 255, 0.15)';
+      ctx.strokeStyle = isMuted 
+        ? 'rgba(204, 16, 16, 0.7)'
+        : status === 'speaking'
+          ? 'rgba(224, 64, 251, 0.6)'
+          : status === 'listening'
+            ? 'rgba(0, 229, 255, 0.6)'
+            : 'rgba(255, 255, 255, 0.15)';
       ctx.lineWidth = 2;
       ctx.stroke();
 
       // Inner icon — mic or waveform
-      if (status === 'speaking') {
+      if (isMuted) {
+        // Muted Mic icon (mic with a slash)
+        ctx.fillStyle = 'rgba(255, 100, 100, 0.9)';
+        ctx.beginPath();
+        ctx.roundRect(cx - 5, cy - 14, 10, 20, 5);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(cx, cy + 2, 12, 0, Math.PI);
+        ctx.strokeStyle = 'rgba(255, 100, 100, 0.9)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        // Slash
+        ctx.beginPath();
+        ctx.moveTo(cx - 14, cy - 16);
+        ctx.lineTo(cx + 14, cy + 16);
+        ctx.strokeStyle = '#ff4444';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      } else if (status === 'speaking') {
         // Equalizer bars
         const bars = 5;
         const barWidth = 4;
@@ -137,7 +161,7 @@ export default function VoiceButton({ status, onClick, disabled }: VoiceButtonPr
 
     draw();
     return () => cancelAnimationFrame(animFrameRef.current);
-  }, [status]);
+  }, [status, isMuted]);
 
   const statusLabels: Record<string, string> = {
     idle: 'Tap to talk',
@@ -146,6 +170,8 @@ export default function VoiceButton({ status, onClick, disabled }: VoiceButtonPr
     speaking: 'TCG is talking',
     processing: 'Thinking...',
   };
+
+  const currentLabel = isMuted ? 'Muted (Tap to unmute)' : statusLabels[status];
 
   return (
     <div className="voice-button-container" style={{
@@ -156,23 +182,23 @@ export default function VoiceButton({ status, onClick, disabled }: VoiceButtonPr
     }}>
       <button
         onClick={onClick}
-        disabled={disabled}
-        aria-label={statusLabels[status]}
+        disabled={disabled && !isMuted} // allow clicking if muted to unmute!
+        aria-label={currentLabel}
         style={{
           width: '120px',
           height: '120px',
           borderRadius: '50%',
           border: 'none',
           background: 'transparent',
-          cursor: disabled ? 'not-allowed' : 'pointer',
+          cursor: (disabled && !isMuted) ? 'not-allowed' : 'pointer',
           position: 'relative',
           padding: 0,
-          opacity: disabled ? 0.5 : 1,
+          opacity: (disabled && !isMuted) ? 0.5 : 1,
           transition: 'opacity 0.2s, transform 0.15s',
           transform: 'scale(1)',
         }}
         onMouseDown={(e) => {
-          if (!disabled) (e.currentTarget as HTMLButtonElement).style.transform = 'scale(0.95)';
+          if (!(disabled && !isMuted)) (e.currentTarget as HTMLButtonElement).style.transform = 'scale(0.95)';
         }}
         onMouseUp={(e) => {
           (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)';
@@ -190,14 +216,15 @@ export default function VoiceButton({ status, onClick, disabled }: VoiceButtonPr
         fontFamily: 'var(--font-display)',
         fontSize: '0.8rem',
         fontWeight: 500,
-        color: status === 'listening' ? 'var(--accent-cyan)'
+        color: isMuted ? 'var(--accent-red, #ff4444)'
+          : status === 'listening' ? 'var(--accent-cyan)'
           : status === 'speaking' ? 'var(--accent-magenta)'
             : 'var(--text-muted)',
         textTransform: 'uppercase',
         letterSpacing: '0.1em',
         transition: 'color 0.3s',
       }}>
-        {statusLabels[status]}
+        {currentLabel}
       </span>
     </div>
   );

@@ -132,12 +132,13 @@ interface CruiseHQProps {
   groups: Record<string, GroupState>;
   activeGuests: string[];
   onSaveMemory?: (text: string, imageUrl?: string) => void;
-  onCreateGroups: (numGroups: number, mode: 'auto' | 'self-select' | 'smart', param?: string) => void;
-  onClearGroups: () => void;
-  onSetGroupLeader: (groupName: string, leader: string) => void;
-  onMoveGuest: (guest: string, toGroup: string | null) => void;
+  onCreateGroups?: (numGroups: number, mode: 'auto' | 'self-select' | 'smart', param?: string) => void;
+  onClearGroups?: () => void;
+  onSetGroupLeader?: (groupName: string, leader: string) => void;
+  onMoveGuest?: (guest: string, toGroup: string | null) => void;
   isOpen: boolean;
   onClose: () => void;
+  isHost?: boolean;
 }
 
 const supabase = createClient();
@@ -158,7 +159,7 @@ function renderWithMentions(text: string) {
 export default function CruiseHQ({
   roomId, currentUser, groups, activeGuests,
   onSaveMemory, onCreateGroups, onClearGroups, onSetGroupLeader, onMoveGuest,
-  isOpen, onClose,
+  isOpen, onClose, isHost = true,
 }: CruiseHQProps) {
   // 'main' | 'groups' | <group name>
   const [activeTab, setActiveTab] = useState<'main' | 'groups' | string>('main');
@@ -179,7 +180,7 @@ export default function CruiseHQ({
 
   useEffect(() => {
     if (!roomId) return;
-    const channel = supabase.channel(`room_${roomId}`, { config: { broadcast: { self: true } } });
+    const channel = supabase.channel(`room:${roomId}`, { config: { broadcast: { self: true } } });
     channel.on('broadcast', { event: 'room_chat' }, ({ payload }) => {
       setMessages(prev => [...prev, payload]);
     }).subscribe();
@@ -351,6 +352,7 @@ export default function CruiseHQ({
             onSetLeader={onSetGroupLeader}
             onMoveGuest={onMoveGuest}
             onStartLeaderPoll={handleStartLeaderPoll}
+            isHost={isHost}
           />
         </div>
       ) : (
@@ -498,7 +500,9 @@ export default function CruiseHQ({
             )}
 
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', paddingTop: '10px', paddingBottom: '4px' }}>
-              <button onClick={() => setShowPollUI(!showPollUI)} style={{ background: 'rgba(255,100,0,0.15)', color: '#FF8C00', border: '1px solid rgba(255,100,0,0.25)', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '1.1rem', minWidth: '40px', minHeight: '40px' }}>📊</button>
+              {isHost && (
+                <button onClick={() => setShowPollUI(!showPollUI)} style={{ background: 'rgba(255,100,0,0.15)', color: '#FF8C00', border: '1px solid rgba(255,100,0,0.25)', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '1.1rem', minWidth: '40px', minHeight: '40px' }}>📊</button>
+              )}
               <button onClick={() => { setShowRandomizerUI(!showRandomizerUI); setShowPollUI(false); setShowDropUI(false); }} style={{ background: 'rgba(255,200,0,0.12)', color: '#FFE600', border: '1px solid rgba(255,200,0,0.2)', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '1.1rem', minWidth: '40px', minHeight: '40px' }}>🎯</button>
               <button onClick={() => { setShowDropUI(!showDropUI); setShowPollUI(false); setShowRandomizerUI(false); }} style={{ background: 'rgba(255,100,200,0.15)', color: '#FF64C8', border: '1px solid rgba(255,100,200,0.25)', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '1.1rem', minWidth: '40px', minHeight: '40px' }}>📥</button>
               <input
