@@ -9,7 +9,8 @@ interface ModeSelectorProps {
   onModeChange: (mode: TCGMode) => void;
 }
 
-const modes: { id: TCGMode; label: string; svgPath: string }[] = [
+// Tools is intentionally excluded from the pill — it lives in the side action stack
+const modes: { id: Exclude<TCGMode, 'tools'>; label: string; svgPath: string }[] = [
   {
     id: 'locator',
     label: 'Locator',
@@ -24,11 +25,6 @@ const modes: { id: TCGMode; label: string; svgPath: string }[] = [
     id: 'game-master',
     label: 'Game Master',
     svgPath: 'M15 7.5V2H9v5.5l3 3 3-3zM7.5 9H2v6h5.5l3-3-3-3zM9 16.5V22h6v-5.5l-3-3-3 3zM16.5 9l-3 3 3 3H22V9h-5.5z',
-  },
-  {
-    id: 'tools',
-    label: 'Tools',
-    svgPath: 'M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z',
   },
 ];
 
@@ -61,7 +57,6 @@ export default function ModeSelector({ activeMode, onModeChange }: ModeSelectorP
               minHeight: 'unset',
               minWidth: 'unset',
               transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-              // Dark pill on yellow background — matches submission cover feature labels
               background: isActive
                 ? 'linear-gradient(135deg, rgba(30, 6, 50, 0.98) 0%, rgba(18, 4, 32, 0.98) 100%)'
                 : 'rgba(18, 4, 32, 0.78)',

@@ -4,7 +4,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useConversation } from '@elevenlabs/react';
 import VoiceButton from './VoiceButton';
 import ChatFallback from './ChatFallback';
-import CruiseHQ from './CruiseHQ';
+import CruiseHQ, { GroupState } from './CruiseHQ';
 import ModeSelector, { TCGMode } from './ModeSelector';
 import GameSession from './GameSession';
 import WaveformVisualizer from './WaveformVisualizer';
@@ -59,8 +59,9 @@ export default function ConversationManager() {
   const [activeGuests, setActiveGuests] = useState<string[]>([]);
   const activeGuestsRef = useRef<string[]>([]); // live ref so client tool handlers always see current guests
   const [pushedImage, setPushedImage] = useState<string | null>(null);
+  const [hostCruiseId, setHostCruiseId] = useState<string>(userName || '');
   const [cohostRequests, setCohostRequests] = useState<string[]>([]);
-  const [groups, setGroups] = useState<Record<string, string[]>>({});
+  const [groups, setGroups] = useState<Record<string, GroupState>>({});
   const [showGroupsModal, setShowGroupsModal] = useState(false);
   // createClient() is a singleton — safe to call unconditionally (but we ensure it only runs once per component instance).
   const supabase = useRef<ReturnType<typeof createClient> | null>(null);
@@ -108,11 +109,18 @@ export default function ConversationManager() {
 
   // (background video stream removed — no persistent camera)
 
-  // Toggle mic mute via ElevenLabs SDK
+  // Toggle mic mute — disables the actual mic hardware track so audio truly stops
   const toggleMicMute = useCallback(() => {
     if (conversationRef.current?.status !== 'connected') return;
     setIsMicMuted(prev => {
       const next = !prev;
+      // Primary fix: enable/disable the raw mic stream tracks at the hardware level
+      if (micStreamRef.current) {
+        micStreamRef.current.getAudioTracks().forEach(track => {
+          track.enabled = !next; // false = muted (stream still "open" but silent)
+        });
+      }
+      // Also notify ElevenLabs SDK as a secondary signal (best-effort)
       try { (conversationRef.current as any)?.setMute?.(next); } catch {}
       return next;
     });
@@ -132,14 +140,14 @@ export default function ConversationManager() {
   const contextRef = useRef<string>('');
   useEffect(() => {
     contextRef.current = `[SYSTEM] The user just opened TCG. Context:
-- Name: ${userName || 'Unknown yet (Ask naturally)'}
+- Name: ${hostCruiseId || 'Unknown yet (Ask naturally)'}
 - Location: ${location || 'Unknown (Ask if needed for spots/plugs)'}
 - UI Mode: ${activeMode}
 - CruiseHQ Room Code: ${roomId} | Active Guests: ${activeGuests.length > 0 ? activeGuests.join(', ') : 'None yet'}
 ${wingmanPreferences ? `- Wingman Protocols: ${wingmanPreferences}\nAlways honour these preferences without needing to be reminded.` : ''}
 
 Greet them with energy right now! Be warm, hype, and brief.`;
-  }, [userName, location, activeMode, roomId, activeGuests, wingmanPreferences]);
+  }, [hostCruiseId, location, activeMode, roomId, activeGuests, wingmanPreferences]);
 
   const addMessage = useCallback((role: 'user' | 'agent' | 'system', content: string, metadata?: any) => {
     const msg: Message = {
@@ -347,10 +355,21 @@ Greet them with energy right now! Be warm, hype, and brief.`;
     if (['locator', 'plug', 'game-master', 'tools'].includes(mode)) {
       setActiveMode(mode);
       if (mode !== 'game-master') setGameStatus(null);
+      // Mode-specific announcement so the switch is genuinely useful
+      const announcements: Record<string, string> = {
+        locator: "Locator mode activated! I'm connected to Google Maps — ask me to find a place, get directions, check vibes at a spot, or handle any location-based need. Where are we heading?",
+        plug: "The Plug is active! I connect you to the right service providers based on your location and what you need — a DJ, a caterer, a photographer, a barber, an after-party venue. What do you need sorted?",
+        'game-master': "Game Master mode activated! Tell me the event type, vibe, and how many people — I'll recommend games that fit perfectly. Once we pick one, I'll referee and keep score. What kind of event is this?",
+        tools: "Tools mode! I can open the randomizer, dice, coin flip, timer — just say the word.",
+      };
+      setTimeout(() => {
+        safeInjectMessage(`[SYSTEM MODE SWITCH] You just switched to ${mode} mode. ${announcements[mode] || ''} Announce this naturally to the user now.`);
+      }, 300);
       return `Mode switched to ${mode}`;
     }
     return 'Failed: Invalid mode';
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [safeInjectMessage]);
 
   const [activeToolId, setActiveToolId] = useState<string | undefined>(undefined);
 
@@ -407,10 +426,22 @@ Greet them with energy right now! Be warm, hype, and brief.`;
 
   const handleRandomizeGroupsTool = useCallback((params: Record<string, unknown>) => {
     const numGroups = Math.max(2, Number(params.param_numGroups) || 2);
+    const mode = (params.param_mode as 'auto' | 'self-select' | 'smart') || 'auto';
+    const sortParam = params.param_param as string | undefined;
     if (activeGuests.length < 2) return 'Not enough guests in the room to split into groups.';
-    handleRandomizeGroups(numGroups);
-    return `Split ${activeGuests.length} guests into ${numGroups} groups!`;
+    handleCreateGroups(numGroups, mode, sortParam);
+    return `${mode === 'auto' ? 'Split' : 'Creating'} ${activeGuests.length} guests into ${numGroups} groups (mode: ${mode})!`;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeGuests]);
+
+  const handleSetGroupLeaderTool = useCallback((params: Record<string, unknown>) => {
+    const groupName = params.param_groupName as string;
+    const leader = params.param_leader as string;
+    if (!groupName || !leader) return 'Failed: Missing groupName or leader param.';
+    handleSetGroupLeader(groupName, leader);
+    return `${leader} is now the leader of ${groupName}!`;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleAnalyzeImage = useCallback((params: Record<string, unknown>) => {
     const task = (params.param_task as VisionTask) || 'general';
@@ -425,11 +456,59 @@ Greet them with energy right now! Be warm, hype, and brief.`;
     // Inject vision result into live transcript so agent gets context
     addMessage('system', `🔍 Vision result: ${result}`);
     safeInjectMessage(`[Vision Analysis Complete] ${result}`);
-    // If it's a bill result, auto-populate the UI feedback
+
+    // If it's a bill result, show the total amount (numbers-only in UI)
     if (structured?.total) {
-      addMessage('system', `💰 Detected total: $${structured.total}. ${structured.summary || ''}`);
+      addMessage('system', `💰 Detected total: ${structured.total}. ${structured.summary || ''}`);
+    }
+
+    // ─── Actionable OCR: auto-verify barcode + NAFDAC in background ───────────
+    const ocr = structured?.ocr;
+    if (!ocr) return;
+
+    // Barcode lookup via Open Food Facts
+    if (ocr.barcode) {
+      addMessage('system', `🔎 Looking up barcode ${ocr.barcode}…`);
+      fetch('/api/verify-barcode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barcode: ocr.barcode }),
+      })
+        .then(r => r.json())
+        .then((data) => {
+          if (data.found) {
+            addMessage('system', `📦 Barcode verified: ${data.summary}`);
+            safeInjectMessage(`[Barcode Lookup] ${data.summary}`);
+          } else {
+            addMessage('system', `❓ Barcode ${ocr.barcode}: ${data.message || 'Not found in product database.'}`);
+            safeInjectMessage(`[Barcode Lookup] Barcode ${ocr.barcode} not found in product database.`);
+          }
+        })
+        .catch(() => addMessage('system', '⚠️ Barcode lookup failed.'));
+    }
+
+    // NAFDAC number verification via Firecrawl scrape
+    if (ocr.nafdac) {
+      addMessage('system', `🔎 Verifying NAFDAC number ${ocr.nafdac}…`);
+      fetch('/api/verify-nafdac', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nafdac: ocr.nafdac }),
+      })
+        .then(r => r.json())
+        .then((data) => {
+          if (data.found) {
+            addMessage('system', `🏛️ NAFDAC verified: ${data.summary}`);
+            safeInjectMessage(`[NAFDAC Verification] ${data.summary}`);
+          } else {
+            addMessage('system', `🚨 NAFDAC ${ocr.nafdac}: ${data.message || 'Not found in registry — may be unregistered or counterfeit.'}`);
+            safeInjectMessage(`[NAFDAC Verification] ${ocr.nafdac} not found in the NAFDAC registry. Treat with caution.`);
+          }
+        })
+        .catch(() => addMessage('system', '⚠️ NAFDAC verification failed.'));
     }
   }, [addMessage, safeInjectMessage]);
+
 
   const startConversation = useCallback(async () => {
     try {
@@ -457,6 +536,7 @@ Greet them with energy right now! Be warm, hype, and brief.`;
           displayResults: handleDisplayResults,
           showQR: handleShowQR,
           randomizeGroups: handleRandomizeGroupsTool,
+          setGroupLeader: handleSetGroupLeaderTool,
           analyzeImage: handleAnalyzeImage,
           captureScreen: async () => {
             addMessage('system', '📸 Capturing screen memory...');
@@ -513,27 +593,101 @@ Greet them with energy right now! Be warm, hype, and brief.`;
     );
   }, [getDeviceLocation, addMessage, safeInjectMessage]);
 
-  // Derive group assignment for a player
-  const getPlayerGroup = (name: string) => {
-    for (const [groupName, members] of Object.entries(groups)) {
-      if (members.includes(name)) return groupName;
-    }
-    return null;
-  };
+  // ─── Group Management ─────────────────────────────────────────────────────
 
-  const handleRandomizeGroups = useCallback((numGroups: number) => {
-    const shuffled = [...activeGuests].sort(() => 0.5 - Math.random());
-    const newGroups: Record<string, string[]> = {};
-    for (let i = 0; i < numGroups; i++) {
-      newGroups[`Group ${String.fromCharCode(65 + i)}`] = [];
+  /** Broadcast the current group state to all guest devices */
+  const broadcastGroupUpdate = useCallback((newGroups: Record<string, GroupState>) => {
+    if (roomChannelRef.current) {
+      roomChannelRef.current.send({
+        type: 'broadcast',
+        event: 'group_update',
+        payload: { groups: newGroups },
+      }).catch(() => {});
     }
-    shuffled.forEach((guest, index) => {
-      const groupKey = `Group ${String.fromCharCode(65 + (index % numGroups))}`;
-      newGroups[groupKey].push(guest);
-    });
+  }, []);
+
+  /** Build groups from current guest roster */
+  const handleCreateGroups = useCallback((numGroups: number, mode: 'auto' | 'self-select' | 'smart', param?: string) => {
+    const newGroups: Record<string, GroupState> = {};
+    for (let i = 0; i < numGroups; i++) {
+      newGroups[`Group ${String.fromCharCode(65 + i)}`] = { members: [], leader: null };
+    }
+
+    if (mode === 'auto') {
+      const shuffled = [...activeGuests].sort(() => 0.5 - Math.random());
+      shuffled.forEach((guest, index) => {
+        const groupKey = `Group ${String.fromCharCode(65 + (index % numGroups))}`;
+        newGroups[groupKey].members.push(guest);
+      });
+      addMessage('system', `🎲 Auto-split ${activeGuests.length} Cruisers into ${numGroups} groups.`);
+    } else if (mode === 'self-select') {
+      // Members are empty — guests pick their own group from their phone
+      addMessage('system', `✋ Self-select mode: Guests can now pick their group on their phones!`);
+      safeInjectMessage(`[SYSTEM] Groups created in self-select mode. ${numGroups} groups available: ${Object.keys(newGroups).join(', ')}. Guests will pick their own groups from their phones. Announce this to the room!`);
+    } else if (mode === 'smart' && param) {
+      addMessage('system', `🧠 Smart sort requested by param: "${param}". TCG will handle distribution.`);
+      safeInjectMessage(`[SYSTEM] The host wants to create ${numGroups} groups sorted by the following parameter: "${param}". Ask the group about this parameter and then tell the host to assign guests manually via the Roster tab, or ask each guest for their preference and use the setGroupLeader / moveGuest tools.`);
+    }
+
     setGroups(newGroups);
-    addMessage('system', `🎲 Randomly assigned ${activeGuests.length} Cruisers into ${numGroups} groups.`);
-  }, [activeGuests, addMessage]);
+    broadcastGroupUpdate(newGroups);
+  }, [activeGuests, addMessage, safeInjectMessage, broadcastGroupUpdate]);
+
+  /** Clear all groups */
+  const handleClearGroups = useCallback(() => {
+    setGroups({});
+    broadcastGroupUpdate({});
+    addMessage('system', '🗑️ All groups cleared.');
+  }, [broadcastGroupUpdate, addMessage]);
+
+  /** Move a guest to a different group (or remove from groups) */
+  const handleMoveGuest = useCallback((guest: string, toGroup: string | null) => {
+    setGroups(prev => {
+      const next = { ...prev };
+      // Remove from current group
+      for (const gName of Object.keys(next)) {
+        next[gName] = { ...next[gName], members: next[gName].members.filter(m => m !== guest) };
+        if (next[gName].leader === guest) next[gName] = { ...next[gName], leader: null };
+      }
+      // Add to target group
+      if (toGroup && next[toGroup]) {
+        next[toGroup] = { ...next[toGroup], members: [...next[toGroup].members, guest] };
+      }
+      broadcastGroupUpdate(next);
+      return next;
+    });
+  }, [broadcastGroupUpdate]);
+
+  /** Set or update a group leader */
+  const handleSetGroupLeader = useCallback((groupName: string, leader: string) => {
+    setGroups(prev => {
+      const next = {
+        ...prev,
+        [groupName]: { ...prev[groupName], leader },
+      };
+      broadcastGroupUpdate(next);
+      return next;
+    });
+    addMessage('system', `👑 ${leader} is now the leader of ${groupName}!`);
+    safeInjectMessage(`[SYSTEM] ${leader} has been set as the leader of ${groupName}. Acknowledge and hype them up!`);
+  }, [broadcastGroupUpdate, addMessage, safeInjectMessage]);
+
+  // Listen for guest self-select group requests
+  useEffect(() => {
+    if (!roomChannelRef.current) return;
+    const sub = roomChannelRef.current.on('broadcast', { event: 'group_self_select' }, (payload: any) => {
+      const { guest, requestedGroup } = payload.payload;
+      if (!guest || !requestedGroup) return;
+      handleMoveGuest(guest, requestedGroup);
+      addMessage('system', `✋ ${guest} joined ${requestedGroup}!`);
+    });
+    return () => { sub?.unsubscribe?.(); };
+  }, [handleMoveGuest, addMessage]);
+
+  // Legacy shim kept so voice tool still works
+  const handleRandomizeGroups = useCallback((numGroups: number) => {
+    handleCreateGroups(numGroups, 'auto');
+  }, [handleCreateGroups]);
 
   return (
     <div id="tcg-capture-area" className="page-container">
@@ -601,7 +755,8 @@ Greet them with energy right now! Be warm, hype, and brief.`;
         <ToolsPanel 
           activeTool={activeToolId as any} 
           activeGuests={activeGuests} 
-          groups={groups} 
+          groups={Object.fromEntries(Object.entries(groups).map(([k, v]) => [k, v.members]))} 
+          location={location}
           onClose={() => setActiveMode('locator')}
         />
       )}
@@ -617,7 +772,17 @@ Greet them with energy right now! Be warm, hype, and brief.`;
       {/* ── Mode Selector ── */}
       <div style={{ position: 'absolute', top: 'clamp(80px, 19vmin, 135px)', left: 0, right: 0, zIndex: 15, display: 'flex', justifyContent: 'center' }}>
         <div style={{ background: 'rgba(10, 4, 18, 0.88)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)', border: '1px solid rgba(245,200,0,0.2)', borderRadius: '99px', padding: '4px 6px', boxShadow: '0 6px 32px rgba(0,0,0,0.45)' }}>
-          <ModeSelector activeMode={activeMode} onModeChange={setActiveMode} />
+          <ModeSelector activeMode={activeMode} onModeChange={(mode) => {
+            setActiveMode(mode);
+            if (mode !== 'game-master') setGameStatus(null);
+            const announcements: Record<string, string> = {
+              locator: "Locator mode activated! I'm connected to Google Maps — ask me to find a place, get directions, check vibes at a spot, or handle any location-based need. Where are we heading?",
+              plug: "The Plug is active! I connect you to the right service providers based on your location and what you need — a DJ, a caterer, a photographer, a barber, an after-party venue. What do you need sorted?",
+              'game-master': "Game Master mode activated! Tell me the event type, vibe, and how many people — I'll recommend games that fit perfectly. Once we pick one, I'll referee and keep score. What kind of event is this?",
+              tools: "Tools mode! Say the word and I'll open the randomizer, dice, coin flip, or timer.",
+            };
+            setTimeout(() => safeInjectMessage(`[SYSTEM MODE SWITCH] Switched to ${mode} mode. ${announcements[mode] || ''} Announce this naturally.`), 300);
+          }} />
         </div>
       </div>
 
@@ -816,6 +981,22 @@ Greet them with energy right now! Be warm, hype, and brief.`;
             <span style={{ fontSize: '0.55rem', fontWeight: 800, fontFamily: 'var(--font-russo), sans-serif', letterSpacing: '0.04em', textTransform: 'uppercase' }}>SAVE</span>
           </button>
           
+          {/* Tools — moved from mode pill to side stack */}
+          <button
+            onClick={() => {
+              setActiveMode('tools');
+              safeInjectMessage('[SYSTEM MODE SWITCH] You just switched to Tools mode. Announce this and offer to open a specific tool like the randomizer, dice, coin, or timer.');
+            }}
+            aria-label="Open Party Tools"
+            style={{ width: 56, height: 56, borderRadius: '16px', background: activeMode === 'tools' ? 'rgba(0,229,255,0.2)' : 'rgba(18, 4, 32, 0.95)', border: activeMode === 'tools' ? '1.5px solid rgba(0,229,255,0.6)' : '1px solid rgba(255,255,255,0.15)', color: activeMode === 'tools' ? '#00E5FF' : '#FFFFFF', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', gap: 4, backdropFilter: 'blur(16px)', transition: 'all 0.15s ease', minWidth: 'unset', minHeight: 'unset', boxShadow: activeMode === 'tools' ? '0 0 24px rgba(0,229,255,0.3)' : '0 8px 32px rgba(0,0,0,0.4)' }}
+            onPointerDown={(e) => e.currentTarget.style.transform = 'scale(0.9)'}
+            onPointerUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            onPointerLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg>
+            <span style={{ fontSize: '0.55rem', fontWeight: 800, fontFamily: 'var(--font-russo), sans-serif', letterSpacing: '0.04em', textTransform: 'uppercase' }}>TOOLS</span>
+          </button>
+
           {/* CruiseHQ */}
           <button
             onClick={() => setShowCruiseHQ(true)}
@@ -864,7 +1045,7 @@ Greet them with energy right now! Be warm, hype, and brief.`;
             isConnected={conversation.status === 'connected'}
             isAgentSpeaking={conversation.isSpeaking}
             onPushImage={(img) => setPushedImage(img)}
-            cruiseId={userName}
+            cruiseId={hostCruiseId}
           />
         </AnimatePresence>
       </div>
@@ -916,73 +1097,7 @@ Greet them with energy right now! Be warm, hype, and brief.`;
         )}
       </AnimatePresence>
 
-      {/* 7. Groups Management Modal */}
-      <AnimatePresence>
-        {showGroupsModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            style={{ position: 'fixed', inset: 0, zIndex: 120, background: 'rgba(5, 5, 15, 0.9)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}
-          >
-            <div className="glass-card-heavy" style={{ padding: '28px', maxWidth: '480px', width: '100%', border: '1px solid rgba(245,200,0,0.2)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <h2 style={{ fontFamily: "'Russo One', sans-serif", color: '#F5C800', fontWeight: 900, fontSize: '1.3rem', margin: 0, letterSpacing: '0.04em' }}>CRUISER ROSTER</h2>
-                <button onClick={() => setShowGroupsModal(false)} style={{ background: 'rgba(245,200,0,0.08)', border: '1px solid rgba(245,200,0,0.25)', color: '#F5C800', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '0.9rem' }}>✕</button>
-              </div>
 
-              <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '24px', paddingRight: '8px' }}>
-                {activeGuests.length === 0 ? (
-                  <p style={{ color: 'rgba(255,255,255,0.4)', textAlign: 'center' }}>No cruisers connected yet...</p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {activeGuests.map(guest => (
-                      <div key={guest} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: 'rgba(255,255,255,0.05)', borderRadius: '12px' }}>
-                        <span style={{ fontWeight: 700 }}>{guest}</span>
-                        {getPlayerGroup(guest) && (
-                          <span style={{ fontSize: '0.7rem', background: 'var(--accent-magenta)', color: '#fff', padding: '4px 8px', borderRadius: '8px' }}>
-                            {getPlayerGroup(guest)}
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {activeGuests.length > 1 && (
-                <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '24px' }}>
-                  <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', marginBottom: '16px', fontWeight: 700 }}>QUICK ACTIONS</p>
-                  <div style={{ display: 'flex', gap: '12px' }}>
-                    <button 
-                      onClick={() => handleRandomizeGroups(2)}
-                      style={{ flex: 1, background: 'var(--accent-cyan)', color: '#000', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: 900, cursor: 'pointer' }}
-                    >
-                      SPLIT 50/50
-                    </button>
-                    <button 
-                      onClick={() => handleRandomizeGroups(3)}
-                      style={{ flex: 1, background: 'transparent', border: '2px solid var(--accent-cyan)', color: 'var(--accent-cyan)', padding: '12px', borderRadius: '12px', fontWeight: 900, cursor: 'pointer' }}
-                    >
-                      3 GROUPS
-                    </button>
-                    {Object.keys(groups).length > 0 && (
-                      <button 
-                        onClick={() => setGroups({})}
-                        style={{ flex: 1, background: 'rgba(255, 42, 42, 0.1)', color: '#FF2A2A', border: '1px solid #FF2A2A', padding: '12px', borderRadius: '12px', fontWeight: 800, cursor: 'pointer' }}
-                      >
-                        RESET
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* CruiseHQ Join QR Code Modal */}
       <AnimatePresence>
         {showQR && (
           <motion.div
@@ -1024,6 +1139,32 @@ Greet them with energy right now! Be warm, hype, and brief.`;
               willChange: 'transform',
             }}
           />
+          
+          <input
+            type="text"
+            placeholder="ENTER YOUR CRUISE ID"
+            value={hostCruiseId}
+            onChange={(e) => setHostCruiseId(e.target.value.toUpperCase())}
+            style={{
+              background: 'rgba(18, 4, 32, 0.65)',
+              border: '1.5px solid rgba(245, 200, 0, 0.4)',
+              color: '#FFE600',
+              padding: '16px 24px',
+              borderRadius: '99px',
+              fontFamily: 'var(--font-display)',
+              fontSize: '1.1rem',
+              fontWeight: 900,
+              textAlign: 'center',
+              letterSpacing: '0.08em',
+              marginBottom: '24px',
+              outline: 'none',
+              width: 'min(320px, 80vw)',
+              textTransform: 'uppercase',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+              backdropFilter: 'blur(12px)',
+            }}
+          />
+
           <button
             className="chunky-button"
             onClick={() => { setIsStarted(true); startConversation(); }}
@@ -1040,9 +1181,14 @@ Greet them with energy right now! Be warm, hype, and brief.`;
       <CruiseHQ 
         roomId={roomId} 
         currentUser="Host" 
-        groups={groups} 
+        groups={groups}
+        activeGuests={activeGuests}
         isOpen={showCruiseHQ} 
         onClose={() => setShowCruiseHQ(false)}
+        onCreateGroups={handleCreateGroups}
+        onClearGroups={handleClearGroups}
+        onSetGroupLeader={handleSetGroupLeader}
+        onMoveGuest={handleMoveGuest}
         onSaveMemory={(text, img) => handleCreateMemory({ type: 'moment', title: 'Room Memory', content: text, image_url: img })}
       />
     </div>

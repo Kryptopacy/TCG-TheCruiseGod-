@@ -385,24 +385,71 @@ function TimerTool() {
 }
 
 // 6. Bill Splitter
-function BillSplitter() {
+function BillSplitter({ location = '' }: { location?: string }) {
   const [total, setTotal] = useState('');
   const [tip, setTip] = useState(15);
   const [people, setPeople] = useState(2);
+  const [currency, setCurrency] = useState('₦');
+
+  // Auto-detect currency from location
+  useEffect(() => {
+    if (!location) return;
+    const loc = location.toLowerCase();
+    
+    const currencyMap: Array<{ match: string[], sym: string }> = [
+      { match: ['nigeria', 'lagos', 'abuja', 'ph'], sym: '₦' },
+      { match: ['us', 'usa', 'united states', 'york', 'california', 'texas', 'florida'], sym: '$' },
+      { match: ['uk', 'united kingdom', 'london', 'england', 'scotland'], sym: '£' },
+      { match: ['france', 'germany', 'spain', 'italy', 'netherlands', 'europe'], sym: '€' },
+      { match: ['uae', 'dubai', 'emirates'], sym: 'د.إ' },
+      { match: ['canada', 'toronto', 'vancouver'], sym: 'C$' },
+      { match: ['australia', 'sydney', 'melbourne'], sym: 'A$' },
+      { match: ['ghana', 'accra'], sym: 'GH₵' },
+      { match: ['kenya', 'nairobi'], sym: 'KSh' },
+      { match: ['south africa', 'cape town', 'johannesburg'], sym: 'R' },
+      { match: ['india', 'mumbai', 'delhi'], sym: '₹' },
+      { match: ['japan', 'tokyo'], sym: '¥' },
+    ];
+
+    const match = currencyMap.find(c => c.match.some(m => loc.includes(m)));
+    if (match) setCurrency(match.sym);
+  }, [location]);
 
   const bill = parseFloat(total) || 0;
   const tipAmt = bill * (tip / 100);
   const grandTotal = bill + tipAmt;
   const perPerson = people > 0 ? grandTotal / people : 0;
 
+  // Format nicely — no decimals if whole number
+  const fmt = (n: number) => n % 1 === 0 ? n.toLocaleString() : n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
   return (
     <div style={toolContainer}>
       <h2 style={toolTitle}>💰 Bill Splitter</h2>
       <div style={{ width: '100%', maxWidth: '320px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {/* Editable Currency Input + Quick Presets */}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', background: 'rgba(255,255,255,0.06)', borderRadius: '16px', padding: '12px 16px' }}>
+          <label style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.75rem', flex: 1 }}>CURRENCY</label>
+          <div style={{ display: 'flex', gap: '4px' }}>
+            {['₦', '$', '£', '€'].map(sym => (
+              <button
+                key={sym}
+                onClick={() => setCurrency(sym)}
+                style={{ padding: '4px 10px', borderRadius: '10px', border: 'none', background: currency === sym ? '#FFE600' : 'rgba(255,255,255,0.08)', color: currency === sym ? '#000' : 'rgba(255,255,255,0.5)', fontWeight: 700, cursor: 'pointer', fontSize: '0.8rem' }}
+              >{sym}</button>
+            ))}
+          </div>
+          <input 
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value.substring(0, 4))}
+            placeholder="SYM"
+            style={{ width: '50px', background: 'rgba(255,230,0,0.1)', border: '1px solid rgba(255,230,0,0.4)', borderRadius: '8px', padding: '6px', color: '#FFE600', fontSize: '1rem', fontWeight: 900, textAlign: 'center', outline: 'none' }}
+          />
+        </div>
         <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: '16px', padding: '16px' }}>
           <label style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.75rem', display: 'block', marginBottom: '8px' }}>TOTAL BILL</label>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ color: '#FFE600', fontWeight: 900, fontSize: '1.4rem' }}>$</span>
+            <span style={{ color: '#FFE600', fontWeight: 900, fontSize: '1.4rem' }}>{currency}</span>
             <input type="number" value={total} onChange={e => setTotal(e.target.value)} placeholder="0.00" inputMode="decimal" style={{ ...inlineInput, flex: 1, fontSize: '1.6rem', fontWeight: 900, background: 'transparent', border: 'none', padding: '0' }} />
           </div>
         </div>
@@ -424,8 +471,8 @@ function BillSplitter() {
         </div>
         <div style={{ background: 'rgba(255,230,0,0.12)', border: '2px solid #FFE600', borderRadius: '20px', padding: '20px', textAlign: 'center' }}>
           <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.75rem', margin: '0 0 4px' }}>EACH PERSON PAYS</p>
-          <p style={{ color: '#FFE600', fontSize: '2.8rem', fontWeight: 900, margin: '0 0 8px' }}>${perPerson.toFixed(2)}</p>
-          <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', margin: 0 }}>Total ${grandTotal.toFixed(2)} · Tip ${tipAmt.toFixed(2)}</p>
+          <p style={{ color: '#FFE600', fontSize: '2.8rem', fontWeight: 900, margin: '0 0 8px' }}>{currency}{fmt(perPerson)}</p>
+          <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', margin: 0 }}>Total {currency}{fmt(grandTotal)} · Tip {currency}{fmt(tipAmt)}</p>
         </div>
       </div>
     </div>
@@ -673,7 +720,7 @@ const inlineInput: React.CSSProperties = {
 
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 
-export default function ToolsPanel({ activeTool: externalTool, activeGuests = [], groups = {}, onClose }: { activeTool?: Tool; activeGuests?: string[]; groups?: Record<string, string[]>; onClose: () => void }) {
+export default function ToolsPanel({ activeTool: externalTool, activeGuests = [], groups = {}, location = '', onClose }: { activeTool?: Tool; activeGuests?: string[]; groups?: Record<string, string[]>; location?: string; onClose: () => void }) {
   const [activeTool, setActiveTool] = useState<Tool>(externalTool ?? 'home');
 
   useEffect(() => { if (externalTool) setActiveTool(externalTool); }, [externalTool]);
@@ -730,7 +777,7 @@ export default function ToolsPanel({ activeTool: externalTool, activeGuests = []
         {activeTool === 'bottle' && <SpinBottle activeGuests={activeGuests} />}
         {activeTool === 'randomizer' && <Randomizer activeGuests={activeGuests} groups={groups} />}
         {activeTool === 'timer' && <TimerTool />}
-        {activeTool === 'bill' && <BillSplitter />}
+        {activeTool === 'bill' && <BillSplitter location={location} />}
         {activeTool === 'charades' && <CharadesGenerator />}
         {activeTool === 'truth' && <TruthOrDare />}
         {activeTool === 'scoreboard' && <Scoreboard activeGuests={activeGuests} />}

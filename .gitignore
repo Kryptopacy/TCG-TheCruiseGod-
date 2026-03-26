@@ -9,10 +9,6 @@ app/out/
 
 # TCG Project Docs & Setup (Excluded for production)
 implementation_plan*
-elevenlabs_agent_setup.md
-elevenlabs_agent_setup_final.md
-*.md
-!app/**/*.md
 
 # Environment Files
 .env*.local

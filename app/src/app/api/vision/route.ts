@@ -2,39 +2,55 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const TASK_PROMPTS: Record<string, string> = {
   bill_split: `You are a receipt analysis assistant. Analyze this receipt image and extract:
-1. The total bill amount
-2. Any subtotal, tax, and tip amounts separately if visible
-3. Individual line items if readable (dish name + price)
-4. The number of items on the receipt
+1. The currency symbol or code visible on the receipt (e.g. $, ₦, £, €, AED, GHS, KES). If none is visible, infer from context or use a generic symbol.
+2. The total bill amount as a number
+3. Any subtotal, tax, and tip amounts separately if visible
+4. Individual line items if readable (dish name + price)
+5. The number of items on the receipt
 
 Respond with a JSON object like:
 {
-  "total": 45.60,
-  "subtotal": 38.00,
-  "tax": 4.60,
+  "currency": "₦",
+  "total": 45600,
+  "subtotal": 38000,
+  "tax": 4600,
   "tip": 0,
-  "items": [{"name": "Jollof Rice", "price": 12.00}],
-  "summary": "The total is $45.60. Split 4 ways that's $11.40 each."
+  "items": [{"name": "Jollof Rice", "price": 12000}],
+  "summary": "The total is ₦45,600. Split 4 ways that's ₦11,400 each."
 }
-Keep the summary conversational and fun — TCG will read it aloud.`,
+Always use the detected currency symbol in the summary. Keep the summary conversational and fun — TCG will read it aloud.`,
 
-  drink_check: `You are a drinks and spirits verification expert. Analyze this drink/bottle image and assess:
-1. The brand and type of spirit/drink
-2. Any visible authenticity markers (hologram, QR code, NAFDAC number, embossed glass, label quality)
-3. Any red flags for counterfeiting (blurry label, misaligned text, wrong font, cheap cap)
-4. Overall authenticity confidence
+  drink_check: `You are a drink authenticity expert using OCR and visual analysis. Your primary goal is to extract machine-readable data from the bottle before doing any visual assessment.
+
+**Step 1 — OCR Data Extraction (highest priority):**
+- Read and transcribe any visible barcode number (EAN-13, UPC-A, etc.)
+- Extract the full NAFDAC registration number if present (Nigerian regulatory body)
+- Extract any batch code, lot number, or serial number visible on the label or bottle
+- Extract any QR code data text (e.g. a URL or code string)
+
+**Step 2 — Visual Authenticity Assessment:**
+- Brand and type of spirit/drink
+- Label quality (print resolution, alignment, font consistency)
+- Physical security features (hologram, embossed glass, tamper seal, cap quality)
+- Red flags for counterfeiting (blurry text, wrong font, thin/cheap label, stripped cap)
 
 Respond with a JSON object like:
 {
   "brand": "Hennessy VS",
   "type": "Cognac",
-  "authenticityScore": 85,
-  "verdict": "Looks Legit ✅",
-  "flags": ["Hologram present", "Label printing quality good"],
+  "ocr": {
+    "barcode": "3245995961018",
+    "nafdac": "A7-0066L",
+    "batchCode": "L23F097",
+    "qrData": null
+  },
+  "authenticityScore": 88,
+  "verdict": "Likely Authentic ✅",
+  "flags": ["NAFDAC number present", "Barcode readable", "Hologram intact"],
   "redFlags": [],
-  "summary": "This Hennessy looks legit — the hologram's clear and the label quality checks out. Pour up!"
+  "summary": "NAFDAC number A7-0066L spotted and barcode reads 3245995961018. Label quality looks solid — this one checks out. Pour up!"
 }
-Keep the summary short, punchy, and voiced by TCG.`,
+If a field cannot be read, set it to null. Keep the summary short, punchy, and voiced by TCG.`,
 
   game_vision: `You are a game master assistant with expert knowledge of party and board games. Analyze this image and:
 1. Identify what game is being played if possible

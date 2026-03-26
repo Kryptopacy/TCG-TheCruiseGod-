@@ -4,6 +4,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import { motion, AnimatePresence } from 'framer-motion';
 
+// Mirror only what we need on the guest side
+type GroupState = { members: string[]; leader: string | null };
+
 export default function GuestRoom({ params }: { params: Promise<{ id: string }> }) {
   const { id } = React.use(params);
   const roomId = id.toUpperCase();
@@ -19,14 +22,24 @@ export default function GuestRoom({ params }: { params: Promise<{ id: string }> 
   const [isListening, setIsListening] = useState(false);
   const [hasJoined, setHasJoined] = useState(false);
   const [activeGuests, setActiveGuests] = useState<string[]>([]);
+
+  // ── Group Awareness ──
+  const [groups, setGroups] = useState<Record<string, GroupState>>({});
+  const [selfSelectMode, setSelfSelectMode] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
   
   const supabase = useRef(createClient());
   const channelRef = useRef<ReturnType<typeof supabase.current.channel> | null>(null);
 
+  // Derived: which group is this guest in?
+  const myGroup = author ? Object.entries(groups).find(([_, s]) => s.members.includes(author))?.[0] ?? null : null;
+  const myGroupState = myGroup ? groups[myGroup] : null;
+  const isGroupLeader = !!myGroup && myGroupState?.leader === author;
+  const groupNames = Object.keys(groups);
+
   useEffect(() => {
-    // Attempt to recover saved author name or fetch Supabase Auth name for autofill
     const loadIdentity = async () => {
       const savedName = localStorage.getItem('tcg_guestName');
       const { data: { user } } = await supabase.current.auth.getUser();
@@ -38,7 +51,6 @@ export default function GuestRoom({ params }: { params: Promise<{ id: string }> 
     };
     loadIdentity();
 
-    // Initialize Supabase specific room channel
     const channel = supabase.current.channel(`room:${roomId}`);
     channelRef.current = channel;
 
@@ -48,16 +60,23 @@ export default function GuestRoom({ params }: { params: Promise<{ id: string }> 
       setActiveGuests(guests);
     });
 
+    // Real-time group updates from host
+    channel.on('broadcast', { event: 'group_update' }, (payload: any) => {
+      const incoming: Record<string, GroupState> = payload.payload?.groups ?? {};
+      setGroups(incoming);
+      // Detect if self-select mode: groups exist but all are empty
+      const allEmpty = Object.values(incoming).every(s => s.members.length === 0);
+      setSelfSelectMode(Object.keys(incoming).length > 0 && allEmpty);
+    });
+
     channel.subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
-        console.log(`Connected to room:${roomId}`);
         setConnected(true);
       } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
         setConnected(false);
       }
     });
 
-    // Listen for co-host approval
     channel.on('broadcast', { event: 'cohost_approved' }, (payload) => {
       if (payload.payload.cruiseId === (localStorage.getItem('tcg_guestName') || 'Cruiser')) {
         setIsCoHost(true);
@@ -76,7 +95,6 @@ export default function GuestRoom({ params }: { params: Promise<{ id: string }> 
     e.preventDefault();
     const name = author.trim() || 'Cruiser';
 
-    // FCFS Check: Is this name already in the room?
     if (activeGuests.includes(name)) {
       alert("This CruiseID is already active in the room! Please choose another.");
       return;
@@ -89,13 +107,23 @@ export default function GuestRoom({ params }: { params: Promise<{ id: string }> 
     }
   };
 
+  const handleSelfSelectGroup = async (groupName: string) => {
+    if (!channelRef.current || !connected || !author) return;
+    await channelRef.current.send({
+      type: 'broadcast',
+      event: 'group_self_select',
+      payload: { guest: author, requestedGroup: groupName },
+    });
+    // Optimistically update local state
+    setSelfSelectMode(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!content.trim() || !channelRef.current || !connected) return;
 
     setIsSending(true);
     
-    // Save author name locally for future submissions
     if (author.trim()) {
       localStorage.setItem('tcg_guestName', author.trim());
     }
@@ -130,17 +158,15 @@ export default function GuestRoom({ params }: { params: Promise<{ id: string }> 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onloadend = () => {
       const base64String = reader.result as string;
-      // Truncate if too large for broadcast (max 2MB roughly, but let's be safe at 1MB)
       if (base64String.length > 1500000) {
         alert("Image is too large. Try a smaller one!");
         return;
       }
       setImage(base64String);
-      setActionType('chat'); // Default to chat when an image is picked
+      setActionType('chat');
     };
     reader.readAsDataURL(file);
   };
@@ -151,9 +177,7 @@ export default function GuestRoom({ params }: { params: Promise<{ id: string }> 
     await channelRef.current.send({
       type: 'broadcast',
       event: 'cohost_request',
-      payload: {
-        cruiseId: author || 'Cruiser'
-      }
+      payload: { cruiseId: author || 'Cruiser' }
     });
   };
 
@@ -174,7 +198,6 @@ export default function GuestRoom({ params }: { params: Promise<{ id: string }> 
     recognition.continuous = false;
     recognition.interimResults = false;
     recognition.lang = 'en-US';
-
     recognition.onstart = () => setIsListening(true);
     recognition.onend = () => setIsListening(false);
     recognition.onresult = async (event: any) => {
@@ -183,10 +206,7 @@ export default function GuestRoom({ params }: { params: Promise<{ id: string }> 
         await channelRef.current.send({
           type: 'broadcast',
           event: 'cohost_voice',
-          payload: {
-            transcript,
-            author: author || 'Co-host'
-          }
+          payload: { transcript, author: author || 'Co-host' }
         });
       }
     };
@@ -194,6 +214,8 @@ export default function GuestRoom({ params }: { params: Promise<{ id: string }> 
     recognitionRef.current = recognition;
     recognition.start();
   };
+
+  const GROUP_COLORS = ['#FFE600', '#FF8C00', '#FF2A2A', '#00E5FF', '#7B61FF', '#FF64C8'];
 
   return (
     <div style={{
@@ -215,14 +237,9 @@ export default function GuestRoom({ params }: { params: Promise<{ id: string }> 
             <button
               onClick={toggleMic}
               style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '50%',
+                width: '40px', height: '40px', borderRadius: '50%',
                 background: isListening ? '#FF2A2A' : 'rgba(255,255,255,0.1)',
-                border: 'none',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: '1.2rem',
                 animation: isListening ? 'pulse-red 1.5s infinite' : 'none',
                 boxShadow: isListening ? '0 0 15px #FF2A2A' : 'none'
@@ -259,142 +276,231 @@ export default function GuestRoom({ params }: { params: Promise<{ id: string }> 
               onChange={(e) => setAuthor(e.target.value)}
               placeholder="e.g. Maverick"
               required
-              style={{ width: '100%', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '16px', color: '#fff', fontSize: '1rem', outline: 'none' }}
+              style={{ width: '100%', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '16px', color: '#fff', fontSize: '1rem', outline: 'none', boxSizing: 'border-box' }}
             />
             <button type="submit" disabled={!connected} style={{ background: connected ? '#FFE600' : 'rgba(255,255,255,0.1)', color: connected ? '#000' : 'rgba(255,255,255,0.3)', border: 'none', padding: '16px', borderRadius: '12px', fontWeight: 900, cursor: connected ? 'pointer' : 'not-allowed', transition: 'all 0.2s', boxShadow: connected ? '0 10px 30px rgba(255,230,0,0.3)' : 'none' }}>
               {connected ? 'JOIN ROOM' : 'CONNECTING...'}
             </button>
           </form>
         ) : (
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          {/* Action Type Selector */}
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
-            {(['chat', 'dare', 'truth', 'song', 'charades'] as const).map(type => (
-              <button
-                key={type}
-                type="button"
-                onClick={() => setActionType(type)}
-                style={{
-                  flex: 1,
-                  minWidth: '30%',
-                  padding: '12px',
-                  borderRadius: '16px',
-                  border: '2px solid',
-                  borderColor: actionType === type ? '#FFE600' : 'rgba(255,255,255,0.1)',
-                  background: actionType === type ? 'rgba(255,230,0,0.1)' : 'rgba(255,255,255,0.03)',
-                  color: actionType === type ? '#FFE600' : 'rgba(255,255,255,0.5)',
-                  fontWeight: 800,
-                  fontSize: '0.9rem',
-                  cursor: 'pointer',
-                  textTransform: 'capitalize',
-                  transition: 'all 0.2s'
-                }}
-              >
-                {type === 'chat' ? '💬 Chat' : type === 'dare' ? '🔥 Dare' : type === 'truth' ? '🤫 Truth' : type === 'song' ? '🎵 Song' : '🎭 Charades'}
-              </button>
-            ))}
-          </div>
-
-          {/* Inputs */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', background: 'rgba(255,255,255,0.03)', padding: '24px', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <label style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', fontWeight: 700, textTransform: 'uppercase' }}>Playing as</label>
-              <span style={{ fontSize: '0.8rem', color: '#FFE600', fontWeight: 800 }}>{author || 'Anonymous'}</span>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', fontWeight: 700, textTransform: 'uppercase' }}>
-                {actionType === 'chat' ? 'Your Message' : actionType === 'dare' ? 'What\'s the Dare?' : actionType === 'truth' ? 'What\'s the Truth?' : actionType === 'song' ? 'What Song to Queue?' : 'Charades Word?'}
-              </label>
-              
-              <div style={{ position: 'relative' }}>
-                <textarea
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  placeholder={actionType === 'chat' ? 'Say something...' : actionType === 'dare' ? 'Do 10 pushups...' : actionType === 'truth' ? 'Who is your crush...' : actionType === 'song' ? 'Wizkid - Essence...' : 'Elephant...'}
-                  required={!image}
-                  rows={3}
-                  style={{ width: '100%', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '12px', padding: '16px', color: '#fff', fontSize: '1rem', outline: 'none', resize: 'none', fontFamily: 'inherit' }}
-                />
-                
-                {/* Image Picker Trigger */}
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  style={{ position: 'absolute', right: '12px', bottom: '12px', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '8px', padding: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <span style={{ fontSize: '1.2rem' }}>📷</span>
-                </button>
-                <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  onChange={handleImageChange} 
-                  accept="image/*" 
-                  style={{ display: 'none' }} 
-                />
-              </div>
-            </div>
-
-            {/* Image Preview */}
-            <AnimatePresence>
-              {image && (
+          <>
+            {/* ── Group Status Card ── */}
+            <AnimatePresence mode="wait">
+              {/* Self-select mode: show group picker */}
+              {selfSelectMode && groupNames.length > 0 && !myGroup && (
                 <motion.div
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', border: '2px solid #FFE600', maxWidth: '200px' }}
+                  key="self-select"
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  style={{
+                    background: 'rgba(123,97,255,0.12)', border: '1.5px solid rgba(123,97,255,0.4)',
+                    borderRadius: '20px', padding: '20px', textAlign: 'center',
+                  }}
                 >
-                  <img src={image} alt="Preview" style={{ width: '100%', height: 'auto', display: 'block' }} />
-                  <button
-                    type="button"
-                    onClick={() => setImage(null)}
-                    style={{ position: 'absolute', top: '4px', right: '4px', background: 'rgba(0,0,0,0.7)', border: 'none', color: '#fff', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    ✕
-                  </button>
+                  <p style={{ fontSize: '0.75rem', fontWeight: 800, letterSpacing: '2px', color: '#A78BFA', textTransform: 'uppercase', marginBottom: '8px' }}>
+                    ✋ Pick Your Group
+                  </p>
+                  <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem', marginBottom: '16px' }}>
+                    The host has opened group selection. Tap to join a group!
+                  </p>
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                    {groupNames.map((gName, gi) => {
+                      const color = GROUP_COLORS[gi % GROUP_COLORS.length];
+                      return (
+                        <button
+                          key={gName}
+                          onClick={() => handleSelfSelectGroup(gName)}
+                          style={{
+                            padding: '12px 24px', borderRadius: '12px', border: `2px solid ${color}`,
+                            background: `${color}15`, color, fontWeight: 900, fontSize: '1rem',
+                            cursor: 'pointer', flex: 1, minWidth: '120px',
+                          }}
+                        >
+                          {gName}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Assigned group display */}
+              {myGroup && myGroupState && (
+                <motion.div
+                  key="my-group"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0 }}
+                  style={{
+                    background: isGroupLeader ? 'rgba(255,200,0,0.12)' : 'rgba(255,255,255,0.04)',
+                    border: isGroupLeader ? '2px solid rgba(255,200,0,0.5)' : '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '20px', padding: '20px',
+                  }}
+                >
+                  {isGroupLeader && (
+                    <div style={{
+                      background: 'linear-gradient(135deg, #FFE600, #FF8C00)',
+                      borderRadius: '12px', padding: '10px 16px', marginBottom: '16px', textAlign: 'center',
+                    }}>
+                      <p style={{ color: '#1a0000', fontWeight: 900, fontSize: '1rem', margin: 0 }}>
+                        👑 YOU ARE THE GROUP LEADER
+                      </p>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                    <div>
+                      <p style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '2px', color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', margin: '0 0 4px' }}>Your Group</p>
+                      <p style={{ color: '#FFE600', fontWeight: 900, fontSize: '1.4rem', margin: 0 }}>{myGroup}</p>
+                    </div>
+                    {myGroupState.leader && (
+                      <div style={{ textAlign: 'right' }}>
+                        <p style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', margin: '0 0 3px', textTransform: 'uppercase', letterSpacing: '1px' }}>Leader</p>
+                        <p style={{ color: '#FF8C00', fontWeight: 800, fontSize: '0.9rem', margin: 0 }}>👑 {myGroupState.leader}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Fellow members */}
+                  {myGroupState.members.length > 1 && (
+                    <div>
+                      <p style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>Team</p>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        {myGroupState.members.map(m => (
+                          <span
+                            key={m}
+                            style={{
+                              background: m === author ? 'rgba(255,230,0,0.15)' : 'rgba(255,255,255,0.07)',
+                              border: `1px solid ${m === author ? 'rgba(255,230,0,0.4)' : 'rgba(255,255,255,0.1)'}`,
+                              color: m === author ? '#FFE600' : 'rgba(255,255,255,0.7)',
+                              padding: '4px 10px', borderRadius: '20px', fontSize: '0.8rem',
+                              fontWeight: m === author ? 800 : 400,
+                            }}
+                          >
+                            {m === myGroupState.leader ? '👑 ' : ''}{m}{m === author ? ' (you)' : ''}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
 
-            <AnimatePresence mode="wait">
-              {sentSuccess ? (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  style={{ background: 'var(--accent-green, #00C853)', color: '#000', padding: '16px', borderRadius: '12px', textAlign: 'center', fontWeight: 800, fontSize: '1rem' }}
-                >
-                  ✓ SENT TO HOST
-                </motion.div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <motion.button
-                    type="submit"
-                    disabled={(!content.trim() && !image) || isSending || !connected}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    style={{ background: connected ? '#FFE600' : 'rgba(255,255,255,0.1)', color: connected ? '#000' : 'rgba(255,255,255,0.3)', border: 'none', padding: '18px', borderRadius: '12px', fontWeight: 900, fontSize: '1.1rem', cursor: connected ? 'pointer' : 'not-allowed', transition: 'all 0.2s', boxShadow: connected ? '0 10px 30px rgba(255,230,0,0.3)' : 'none' }}
+            {/* ── Action Form ── */}
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              {/* Action Type Selector */}
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                {(['chat', 'dare', 'truth', 'song', 'charades'] as const).map(type => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setActionType(type)}
+                    style={{
+                      flex: 1, minWidth: '30%', padding: '12px', borderRadius: '16px', border: '2px solid',
+                      borderColor: actionType === type ? '#FFE600' : 'rgba(255,255,255,0.1)',
+                      background: actionType === type ? 'rgba(255,230,0,0.1)' : 'rgba(255,255,255,0.03)',
+                      color: actionType === type ? '#FFE600' : 'rgba(255,255,255,0.5)',
+                      fontWeight: 800, fontSize: '0.9rem', cursor: 'pointer', textTransform: 'capitalize', transition: 'all 0.2s'
+                    }}
                   >
-                    {isSending ? 'SENDING...' : connected ? 'BLAST TO HOST 🚀' : 'CONNECTING...'}
-                  </motion.button>
+                    {type === 'chat' ? '💬 Chat' : type === 'dare' ? '🔥 Dare' : type === 'truth' ? '🤫 Truth' : type === 'song' ? '🎵 Song' : '🎭 Charades'}
+                  </button>
+                ))}
+              </div>
 
-                  {!isCoHost && (
+              {/* Inputs */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', background: 'rgba(255,255,255,0.03)', padding: '24px', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', fontWeight: 700, textTransform: 'uppercase' }}>Playing as</label>
+                  <span style={{ fontSize: '0.8rem', color: '#FFE600', fontWeight: 800 }}>{author || 'Anonymous'}</span>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', fontWeight: 700, textTransform: 'uppercase' }}>
+                    {actionType === 'chat' ? 'Your Message' : actionType === 'dare' ? "What's the Dare?" : actionType === 'truth' ? "What's the Truth?" : actionType === 'song' ? 'What Song to Queue?' : 'Charades Word?'}
+                  </label>
+                  
+                  <div style={{ position: 'relative' }}>
+                    <textarea
+                      value={content}
+                      onChange={(e) => setContent(e.target.value)}
+                      placeholder={actionType === 'chat' ? 'Say something...' : actionType === 'dare' ? 'Do 10 pushups...' : actionType === 'truth' ? 'Who is your crush...' : actionType === 'song' ? 'Wizkid - Essence...' : 'Elephant...'}
+                      required={!image}
+                      rows={3}
+                      style={{ width: '100%', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '12px', padding: '16px', color: '#fff', fontSize: '1rem', outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                    />
                     <button
                       type="button"
-                      onClick={handleRequestCoHost}
-                      disabled={isRequestingCoHost}
-                      style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.6)', padding: '12px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}
+                      onClick={() => fileInputRef.current?.click()}
+                      style={{ position: 'absolute', right: '12px', bottom: '12px', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '8px', padding: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                     >
-                      {isRequestingCoHost ? 'WAITING FOR APPROVAL...' : '🎙️ REQUEST CO-HOST (REMOTE MIC)'}
+                      <span style={{ fontSize: '1.2rem' }}>📷</span>
                     </button>
-                  )}
+                    <input type="file" ref={fileInputRef} onChange={handleImageChange} accept="image/*" style={{ display: 'none' }} />
+                  </div>
                 </div>
-              )}
-            </AnimatePresence>
-          </div>
-        </form>
+
+                <AnimatePresence>
+                  {image && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', border: '2px solid #FFE600', maxWidth: '200px' }}
+                    >
+                      <img src={image} alt="Preview" style={{ width: '100%', height: 'auto', display: 'block' }} />
+                      <button
+                        type="button"
+                        onClick={() => setImage(null)}
+                        style={{ position: 'absolute', top: '4px', right: '4px', background: 'rgba(0,0,0,0.7)', border: 'none', color: '#fff', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        ✕
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <AnimatePresence mode="wait">
+                  {sentSuccess ? (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                      style={{ background: 'var(--accent-green, #00C853)', color: '#000', padding: '16px', borderRadius: '12px', textAlign: 'center', fontWeight: 800, fontSize: '1rem' }}
+                    >
+                      ✓ SENT TO HOST
+                    </motion.div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <motion.button
+                        type="submit"
+                        disabled={(!content.trim() && !image) || isSending || !connected}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        style={{ background: connected ? '#FFE600' : 'rgba(255,255,255,0.1)', color: connected ? '#000' : 'rgba(255,255,255,0.3)', border: 'none', padding: '18px', borderRadius: '12px', fontWeight: 900, fontSize: '1.1rem', cursor: connected ? 'pointer' : 'not-allowed', transition: 'all 0.2s', boxShadow: connected ? '0 10px 30px rgba(255,230,0,0.3)' : 'none' }}
+                      >
+                        {isSending ? 'SENDING...' : connected ? 'BLAST TO HOST 🚀' : 'CONNECTING...'}
+                      </motion.button>
+
+                      {!isCoHost && (
+                        <button
+                          type="button"
+                          onClick={handleRequestCoHost}
+                          disabled={isRequestingCoHost}
+                          style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.6)', padding: '12px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}
+                        >
+                          {isRequestingCoHost ? 'WAITING FOR APPROVAL...' : '🎙️ REQUEST CO-HOST (REMOTE MIC)'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </form>
+          </>
         )}
 
         <style jsx global>{`

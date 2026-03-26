@@ -55,6 +55,7 @@ export default function CameraCapture({ isOpen, task, prompt, onClose, onResult 
   const [lastResult, setLastResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [autoCaptureEnabled, setAutoCaptureEnabled] = useState(false);
+  const [userInstruction, setUserInstruction] = useState<string>(prompt || '');
 
   const meta = TASK_META[task] || TASK_META.general;
 
@@ -72,14 +73,15 @@ export default function CameraCapture({ isOpen, task, prompt, onClose, onResult 
   }, [isStreamReady]);
 
   // Send a frame to the vision API and return result
-  const analyzeFrame = useCallback(async (frameData: string) => {
+  const analyzeFrame = useCallback(async (frameData: string, overrideInstruction?: string) => {
     setIsAnalyzing(true);
     setError(null);
+    const effectivePrompt = overrideInstruction ?? userInstruction ?? prompt;
     try {
       const response = await fetch('/api/vision', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: frameData, task, prompt }),
+        body: JSON.stringify({ image: frameData, task, prompt: effectivePrompt || undefined }),
       });
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.error || 'Vision analysis failed');
@@ -90,13 +92,13 @@ export default function CameraCapture({ isOpen, task, prompt, onClose, onResult 
     } finally {
       setIsAnalyzing(false);
     }
-  }, [task, prompt, onResult]);
+  }, [task, prompt, userInstruction, onResult]);
 
   // Manual snap & analyze
   const handleSnap = useCallback(() => {
     const frame = captureFrame();
-    if (frame) analyzeFrame(frame);
-  }, [captureFrame, analyzeFrame]);
+    if (frame) analyzeFrame(frame, userInstruction || undefined);
+  }, [captureFrame, analyzeFrame, userInstruction]);
 
   // Start the live camera stream
   const startStream = useCallback(async (facing: 'user' | 'environment') => {
@@ -315,10 +317,32 @@ export default function CameraCapture({ isOpen, task, prompt, onClose, onResult 
             {/* Hidden canvas for frame capture */}
             <canvas ref={canvasRef} style={{ display: 'none' }} />
 
-            {/* Hint */}
-            <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.78rem', textAlign: 'center', margin: 0, lineHeight: 1.4 }}>
-              {meta.hint}
-            </p>
+            {/* User Instruction Input */}
+            <div style={{ width: '100%' }}>
+              <textarea
+                value={userInstruction}
+                onChange={(e) => setUserInstruction(e.target.value)}
+                placeholder={meta.hint + ' Or type a specific question…'}
+                rows={2}
+                style={{
+                  width: '100%',
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  borderRadius: '14px',
+                  padding: '10px 14px',
+                  color: 'rgba(255,255,255,0.85)',
+                  fontSize: '0.8rem',
+                  lineHeight: 1.5,
+                  resize: 'none',
+                  outline: 'none',
+                  fontFamily: 'inherit',
+                  boxSizing: 'border-box',
+                  transition: 'border-color 0.2s ease',
+                }}
+                onFocus={(e) => { e.target.style.borderColor = 'rgba(0,229,255,0.4)'; }}
+                onBlur={(e) => { e.target.style.borderColor = 'rgba(255,255,255,0.12)'; }}
+              />
+            </div>
 
             {/* Error */}
             {error && (
