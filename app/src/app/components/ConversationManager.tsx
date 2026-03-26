@@ -47,14 +47,7 @@ export default function ConversationManager() {
   const [userName, setUserName] = useState<string>('');
   const [wingmanPreferences, setWingmanPreferences] = useState<string>('');
 
-  // Video stream background
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
-  const [isVideoPaused, setIsVideoPaused] = useState(false);
-  const isDesktop = typeof window !== 'undefined'
-    ? !('ontouchstart' in window) && navigator.maxTouchPoints === 0
-    : true;
+  // (background video stream removed — camera only runs inside Vision modal)
 
   // Mic mute state
   const [isMicMuted, setIsMicMuted] = useState(false);
@@ -112,53 +105,7 @@ export default function ConversationManager() {
     loadProfile();
   }, []);
 
-  // Start camera stream for video background
-  const startVideoStream = useCallback(async (facing: 'user' | 'environment') => {
-    try {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => t.stop());
-      }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } }
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-    } catch {
-      // Camera denied or not available — fine, background stays yellow
-    }
-  }, []);
-
-  useEffect(() => {
-    // Only start the background video stream once the user has tapped in
-    if (!isStarted) return;
-    startVideoStream(facingMode);
-    return () => {
-      streamRef.current?.getTracks().forEach(t => t.stop());
-      streamRef.current = null;
-    };
-  }, [facingMode, startVideoStream, isStarted]);
-
-  const flipCamera = () => {
-    setFacingMode(prev => prev === 'environment' ? 'user' : 'environment');
-  };
-
-  const toggleVideoStream = () => {
-    setIsVideoPaused(prev => {
-      const next = !prev;
-      if (next) {
-        // Fully stop camera tracks so the camera indicator light turns off
-        streamRef.current?.getTracks().forEach(t => t.stop());
-        streamRef.current = null;
-        if (videoRef.current) videoRef.current.srcObject = null;
-      } else {
-        // Restart the stream when resuming
-        startVideoStream(facingMode);
-      }
-      return next;
-    });
-  };
+  // (background video stream removed — no persistent camera)
 
   // Toggle mic mute via ElevenLabs SDK
   const toggleMicMute = useCallback(() => {
@@ -289,7 +236,15 @@ export default function ConversationManager() {
     onConnect: () => {
       console.log('[TCG] Connected to ElevenLabs');
       setErrorMessage(null);
-      addMessage('system', '🎙️ Connected! TCG is ready to cruise.');
+      addMessage('system', '🎙️ Connected! TCG is live.');
+      // Kick off agent's first speaking turn — without this the agent waits silently
+      setTimeout(() => {
+        try {
+          conversationRef.current?.sendUserMessage(
+            '[SYSTEM] The user just opened TCG. Greet them with energy right now. Be warm, hype, and brief.'
+          );
+        } catch { /* session may have closed */ }
+      }, 900);
     },
     onDisconnect: () => {
       console.log('[TCG] Disconnected');
@@ -596,132 +551,64 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
 
   return (
     <div id="tcg-capture-area" className="page-container">
-      {/* 1. Live Camera Video Background */}
-      <div className="video-bg">
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          style={{
-            transform: facingMode === 'user' ? 'scaleX(-1)' : 'none',
-            display: isVideoPaused ? 'none' : 'block'
-          }}
-        />
-        <div className="video-bg-overlay" />
-      </div>
-      {/* Fallback radical bg (also present when video paused) */}
-      <div className="radical-bg" style={{ opacity: isVideoPaused ? 1 : 0.4 }} />
 
-      {/* Camera flip + pause controls (top-right overlay) */}
-      {isStarted && !isVideoPaused && (
-        <div style={{ position: 'absolute', top: 'max(8px, env(safe-area-inset-top))', right: '8px', zIndex: 25, display: 'flex', gap: '6px' }}>
-          {!isDesktop && (
-            <button
-              onClick={flipCamera}
-              className="camera-ctrl-btn"
-              style={{ position: 'relative', bottom: 'auto', right: 'auto', left: 'auto' }}
-              title="Flip Camera"
-            >
-              🔄 Flip
-            </button>
-          )}
-          <button
-            onClick={toggleVideoStream}
-            className="camera-ctrl-btn"
-            style={{ position: 'relative', bottom: 'auto', right: 'auto', left: 'auto' }}
-            title="Pause Video"
-          >
-            ⏸ Pause
-          </button>
-        </div>
-      )}
-      {isStarted && isVideoPaused && (
-        <div style={{ position: 'absolute', top: 'max(8px, env(safe-area-inset-top))', right: '8px', zIndex: 25 }}>
-          <button
-            onClick={toggleVideoStream}
-            className="camera-ctrl-btn"
-            style={{ position: 'relative', bottom: 'auto', right: 'auto', left: 'auto', borderColor: 'rgba(255,100,0,0.6)', color: '#FF8C00' }}
-            title="Resume Video"
-          >
-            ▶ Resume
-          </button>
-        </div>
-      )}
 
-      {/* 2. Distinct Header Layer: Logo and Location */}
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20, background: 'linear-gradient(135deg, rgba(120,8,8,0.93) 0%, rgba(90,4,4,0.93) 100%)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', borderBottom: '1px solid rgba(255,200,0,0.18)', padding: 'max(12px, env(safe-area-inset-top)) 14px 12px', boxShadow: '0 4px 30px rgba(0,0,0,0.6), 0 1px 0 rgba(255,180,0,0.12)', borderRadius: '0 0 20px 20px', margin: '0' }}>
+
+      {/* ── Header ── */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20,
+        background: 'rgba(14, 14, 20, 0.96)',
+        backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+        borderBottom: '1px solid rgba(245, 200, 0, 0.14)',
+        padding: 'max(12px, env(safe-area-inset-top)) 16px 12px',
+        boxShadow: '0 2px 32px rgba(0,0,0,0.7)',
+        borderRadius: '0 0 18px 18px',
+      }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
-          {/* Logo */}
-          <div style={{ width: 'min(110px, 26vw)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <img src="/tcg-logo.png" alt="TCG Logo" style={{ width: '100%', height: 'auto', filter: 'drop-shadow(0 2px 8px rgba(0, 0, 0, 0.5))' }} />
-            <button 
-              onClick={() => setShowSettings(true)}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem', padding: '4px', opacity: 0.7, color: '#fff', minWidth: 'unset', minHeight: 'unset' }}
-              title="Settings"
-            >
-              ⚙️
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            <img src="/tcg-logo.png" alt="TCG Logo" style={{ width: 'min(96px, 24vw)', height: 'auto', filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.6))' }} />
+            <button onClick={() => setShowSettings(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px', color: 'rgba(245,200,0,0.5)', minWidth: 'unset', minHeight: 'unset' }} title="Settings">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
             </button>
           </div>
-          
-          {/* Location & Room Wrapper */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px', zIndex: 30, minWidth: 0 }}>
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              {/* Active Guests Badge */}
-              {isStarted && activeGuests.length > 0 && (
-                <div 
-                  onClick={() => setShowGroupsModal(true)}
-                  style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 10px', borderRadius: 'var(--radius-full)', background: 'rgba(0, 229, 255, 0.1)', border: '1px solid rgba(0, 229, 255, 0.3)', color: 'var(--accent-cyan)', fontSize: '0.7rem', fontWeight: 800, whiteSpace: 'nowrap' }}
-                >
-                  👥 {activeGuests.length} {Object.keys(groups).length > 0 ? `(${Object.keys(groups).length}G)` : ''}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '5px', minWidth: 0 }}>
+            <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              {isStarted && conversation.status === 'connected' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '4px 9px', borderRadius: '99px', background: 'rgba(204,16,16,0.15)', border: '1px solid rgba(204,16,16,0.4)', color: '#ff7070', fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.06em' }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ff4444', display: 'inline-block', animation: 'mic-live-pulse 1.4s ease-in-out infinite' }} />
+                  LIVE
                 </div>
               )}
-
-              {/* CruiseHQ Code Button */}
               {isStarted && (
-                <button
-                  onClick={() => setShowQR(true)}
-                  style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 10px', borderRadius: 'var(--radius-full)', border: '2px solid rgba(255,200,0,0.5)', background: 'rgba(255,200,0,0.1)', color: '#FFE600', fontSize: '0.7rem', whiteSpace: 'nowrap', fontWeight: 800, boxShadow: '0 2px 8px rgba(255,200,0,0.15)', minWidth: 'unset', minHeight: 'unset' }}
-                >
-                  📱 {roomId}
+                <button onClick={() => setShowQR(true)} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 9px', borderRadius: '99px', border: '1.5px solid rgba(245,200,0,0.4)', background: 'rgba(245,200,0,0.07)', color: '#F5C800', fontSize: '0.62rem', fontWeight: 800, whiteSpace: 'nowrap', cursor: 'pointer', minWidth: 'unset', minHeight: 'unset' }}>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M3 11h8V3H3v8zm2-6h4v4H5V5zM3 21h8v-8H3v8zm2-6h4v4H5v-4zM13 3v8h8V3h-8zm6 6h-4V5h4v4zM13 13h2v2h-2zm2 2h2v2h-2zm2-2h2v2h-2zm-4 4h2v2h-2zm2 2h2v2h-2zm2-2h2v2h-2zm-2-6h2v2h-2z"/></svg>
+                  {roomId}
                 </button>
               )}
-            </div>
-
-            {/* Location Input/Badge */}
-              {showLocationInput ? (
-                <div style={{ background: 'rgba(255, 230, 0, 0.1)', padding: '8px 12px', display: 'flex', gap: '8px', alignItems: 'center', width: '100%', maxWidth: '320px', animation: 'slide-down-toast 0.2s', borderRadius: '14px', border: '1px solid rgba(255, 230, 0, 0.3)', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }}>
-                  <textarea
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    placeholder="Edit full address..."
-                    style={{ flex: 1, background: 'transparent', border: 'none', color: '#fff', fontSize: '0.8rem', outline: 'none', minHeight: '36px', resize: 'none', fontFamily: 'inherit', padding: '4px 0' }}
-                    rows={2}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey && location.trim()) {
-                        e.preventDefault();
-                        setShowLocationInput(false);
-                        addMessage('system', `📍 Location set: ${location}`);
-                      }
-                    }}
-                    autoFocus
-                  />
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <button onClick={handleGetLocation} disabled={isGettingLocation} style={{ background: '#FFE600', border: '2px solid #d4b800', color: '#000', padding: '5px 10px', borderRadius: '8px', fontSize: '0.7rem', cursor: 'pointer', fontWeight: 800, minWidth: 'unset', minHeight: 'unset' }}>{isGettingLocation ? '...' : 'Auto'}</button>
-                    {location.trim() && <button onClick={() => setShowLocationInput(false)} style={{ background: 'var(--accent-green)', border: 'none', color: '#000', padding: '5px 10px', borderRadius: '8px', fontSize: '0.7rem', cursor: 'pointer', fontWeight: 900, minWidth: 'unset', minHeight: 'unset' }}>OK</button>}
-                  </div>
+              {isStarted && activeGuests.length > 0 && (
+                <div onClick={() => setShowGroupsModal(true)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 9px', borderRadius: '99px', background: 'rgba(255,140,0,0.1)', border: '1px solid rgba(255,140,0,0.3)', color: '#FF8C00', fontSize: '0.62rem', fontWeight: 800 }}>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+                  {activeGuests.length}{Object.keys(groups).length > 0 ? ` · ${Object.keys(groups).length}G` : ''}
                 </div>
-              ) : (
-                <button
-                  onClick={() => setShowLocationInput(true)}
-                  style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 12px', borderRadius: 'var(--radius-full)', border: '1px solid rgba(255, 230, 0, 0.3)', background: 'rgba(255, 230, 0, 0.1)', color: 'var(--accent-gold)', fontSize: '0.7rem', maxWidth: '100%', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', fontWeight: 700, boxShadow: '0 2px 8px rgba(0,0,0,0.3)', minWidth: 'unset', minHeight: 'unset' }}
-                >
-                  📍 {location || "Set Your Location"}
-                </button>
               )}
             </div>
+            {showLocationInput ? (
+              <div style={{ background: 'rgba(245,200,0,0.07)', padding: '7px 10px', display: 'flex', gap: '7px', alignItems: 'center', width: '100%', maxWidth: '300px', borderRadius: '12px', border: '1px solid rgba(245,200,0,0.2)' }}>
+                <textarea value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Edit address..." style={{ flex: 1, background: 'transparent', border: 'none', color: '#FFF5D6', fontSize: '0.76rem', outline: 'none', minHeight: '30px', resize: 'none', fontFamily: 'inherit', padding: '2px 0' }} rows={2} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && location.trim()) { e.preventDefault(); setShowLocationInput(false); addMessage('system', `📍 Location: ${location}`); } }} autoFocus />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <button onClick={handleGetLocation} disabled={isGettingLocation} style={{ background: 'var(--grad-gold)', border: 'none', color: '#000', padding: '4px 8px', borderRadius: '6px', fontSize: '0.62rem', cursor: 'pointer', fontWeight: 800, minWidth: 'unset', minHeight: 'unset' }}>{isGettingLocation ? '...' : 'Auto'}</button>
+                  {location.trim() && <button onClick={() => setShowLocationInput(false)} style={{ background: 'rgba(100,220,100,0.15)', border: '1px solid rgba(100,220,100,0.35)', color: '#7dff7d', padding: '4px 8px', borderRadius: '6px', fontSize: '0.62rem', cursor: 'pointer', fontWeight: 900, minWidth: 'unset', minHeight: 'unset' }}>OK</button>}
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => setShowLocationInput(true)} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '99px', border: '1px solid rgba(245,200,0,0.18)', background: 'rgba(245,200,0,0.05)', color: 'rgba(245,200,0,0.65)', fontSize: '0.62rem', maxWidth: '200px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', fontWeight: 700, cursor: 'pointer', minWidth: 'unset', minHeight: 'unset' }}>
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+                {location || 'Set Location'}
+              </button>
+            )}
           </div>
         </div>
+      </div>
 
       {/* Tools Panel Overlay (shown when Tools mode is active) */}
       {activeMode === 'tools' && (
@@ -741,9 +628,9 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
         onSaveName={setUserName} 
       />
 
-      {/* Floating Modes (Pushed below header) */}
-      <div style={{ position: 'absolute', top: 'clamp(85px, 20vmin, 145px)', left: 0, right: 0, zIndex: 15, display: 'flex', justifyContent: 'center' }}>
-        <div style={{ background: 'rgba(22, 4, 4, 0.78)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', border: '1px solid rgba(255,180,0,0.18)', borderRadius: 'var(--radius-full)', padding: '5px 8px', boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
+      {/* ── Mode Selector ── */}
+      <div style={{ position: 'absolute', top: 'clamp(80px, 19vmin, 135px)', left: 0, right: 0, zIndex: 15, display: 'flex', justifyContent: 'center' }}>
+        <div style={{ background: 'rgba(14,14,20,0.82)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid rgba(245,200,0,0.13)', borderRadius: '99px', padding: '4px 6px', boxShadow: '0 4px 24px rgba(0,0,0,0.5)' }}>
           <ModeSelector activeMode={activeMode} onModeChange={setActiveMode} />
         </div>
       </div>
@@ -751,32 +638,11 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
       {/* Co-host Approval Toast */}
       {cohostRequests.length > 0 && (
         <div style={{ position: 'fixed', bottom: '100px', left: '20px', right: '20px', zIndex: 110, display: 'flex', justifyContent: 'center' }}>
-          <div className="glass-card" style={{ padding: '16px 24px', display: 'flex', alignItems: 'center', gap: '16px', border: '2px solid var(--accent-magenta)', boxShadow: '0 0 30px rgba(224, 64, 251, 0.4)', borderRadius: '24px' }}>
-            <span style={{ fontSize: '0.9rem', fontWeight: 800 }}>🎙️ {cohostRequests[0]} wants to be a Co-host</span>
+          <div className="glass-card-heavy" style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: '14px', border: '1.5px solid rgba(245,200,0,0.3)', boxShadow: '0 0 28px rgba(245,200,0,0.15)', borderRadius: '20px' }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#FFF5D6' }}>🎙️ {cohostRequests[0]} wants Co-host</span>
             <div style={{ display: 'flex', gap: '8px' }}>
-              <button 
-                onClick={async () => {
-                  const targetId = cohostRequests[0];
-                  if (roomChannelRef.current) {
-                    await roomChannelRef.current.send({
-                      type: 'broadcast',
-                      event: 'cohost_approved',
-                      payload: { cruiseId: targetId }
-                    });
-                  }
-                  setCohostRequests(prev => prev.filter(id => id !== targetId));
-                  addMessage('system', `✅ ${targetId} is now a Co-host.`);
-                }} 
-                style={{ background: 'var(--accent-green)', border: 'none', padding: '8px 16px', borderRadius: '12px', color: '#000', fontWeight: 900, cursor: 'pointer' }}
-              >
-                APPROVE
-              </button>
-              <button 
-                onClick={() => setCohostRequests(prev => prev.slice(1))} 
-                style={{ background: 'rgba(255,255,255,0.1)', border: 'none', padding: '8px 16px', borderRadius: '12px', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
-              >
-                IGNORE
-              </button>
+              <button onClick={async () => { const targetId = cohostRequests[0]; if (roomChannelRef.current) { await roomChannelRef.current.send({ type: 'broadcast', event: 'cohost_approved', payload: { cruiseId: targetId } }); } setCohostRequests(prev => prev.filter(id => id !== targetId)); addMessage('system', `✅ ${targetId} is now a Co-host.`); }} style={{ background: 'linear-gradient(135deg,#F5C800,#FF8C00)', border: 'none', padding: '7px 14px', borderRadius: '10px', color: '#0A0A10', fontWeight: 900, cursor: 'pointer', fontSize: '0.78rem' }}>APPROVE</button>
+              <button onClick={() => setCohostRequests(prev => prev.slice(1))} style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', padding: '7px 14px', borderRadius: '10px', color: 'rgba(255,245,214,0.6)', fontWeight: 700, cursor: 'pointer', fontSize: '0.78rem' }}>IGNORE</button>
             </div>
           </div>
         </div>
@@ -795,215 +661,200 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
         </div>
       )}
 
-      {/* 4. The Aura (Waveform behind character) */}
-      <div style={{ 
-        position: activeMode === 'tools' ? 'fixed' : 'absolute', 
+      {/* ── Waveform Aura ── */}
+      <div style={{
+        position: activeMode === 'tools' ? 'fixed' : 'absolute',
         bottom: activeMode === 'tools' ? '20px' : '10%',
         left: activeMode === 'tools' ? 'auto' : '50%',
         right: activeMode === 'tools' ? '20px' : 'auto',
         transform: activeMode === 'tools' ? 'none' : 'translateX(-50%)',
-        width: activeMode === 'tools' ? '120px' : '100vw', 
-        height: activeMode === 'tools' ? '120px' : '40vh', 
-        zIndex: activeMode === 'tools' ? 99 : 1, 
-        pointerEvents: 'none', 
-        opacity: activeMode === 'tools' ? 1 : 0.8,
+        width: activeMode === 'tools' ? '120px' : '100vw',
+        height: activeMode === 'tools' ? '120px' : '40vh',
+        zIndex: activeMode === 'tools' ? 99 : 1,
+        pointerEvents: 'none',
+        opacity: activeMode === 'tools' ? 1 : 0.85,
         transition: 'all 0.4s cubic-bezier(0.25, 1, 0.5, 1)'
       }}>
-        <WaveformVisualizer 
-          isSpeaking={conversation.isSpeaking} 
+        <WaveformVisualizer
+          isSpeaking={conversation.isSpeaking}
           isListening={conversation.status === 'connected' && !conversation.isSpeaking}
-          color={
-            conversation.isSpeaking 
-              ? (activeMode === 'locator' ? '#00f0ff' : activeMode === 'plug' ? '#9d00ff' : activeMode === 'game-master' ? '#ff2a2a' : '#ff6b00')
-              : '#ffffff'
-          }
-          secondaryColor={
-            conversation.isSpeaking 
-              ? (activeMode === 'locator' ? 'rgba(0, 240, 255, 0.4)' : activeMode === 'plug' ? 'rgba(157, 0, 255, 0.4)' : activeMode === 'game-master' ? 'rgba(255, 42, 42, 0.4)' : 'rgba(255, 107, 0, 0.4)')
-              : 'rgba(255, 255, 255, 0.3)'
-          }
+          color={conversation.isSpeaking ? '#CC1010' : '#F5C800'}
+          secondaryColor={conversation.isSpeaking ? 'rgba(204,16,16,0.35)' : 'rgba(245,200,0,0.25)'}
         />
       </div>
 
-      {/* 5. Majestic Anchored Character Avatar */}
-      <div 
-        style={{ 
-          position: activeMode === 'tools' ? 'fixed' : 'absolute', 
-          bottom: activeMode === 'tools' ? '30px' : '-5vh',
-          left: activeMode === 'tools' ? 'auto' : '50%', 
-          right: activeMode === 'tools' ? '30px' : 'auto',
-          transform: activeMode === 'tools' 
-            ? `scale(${conversation.isSpeaking ? 1.05 : 1})` 
-            : `translateX(-50%) scale(${conversation.isSpeaking ? 1.05 : 1})`, 
-          zIndex: activeMode === 'tools' ? 100 : 5, 
-          width: activeMode === 'tools' ? '100px' : 'min(85vw, 420px)',
-          cursor: 'pointer',
-          transition: 'all 0.4s cubic-bezier(0.25, 1, 0.5, 1)',
-          animation: conversation.isSpeaking ? 'speaking-bounce 1s infinite ease-in-out' : 'idle-float 5s infinite ease-in-out',
-          filter: conversation.isSpeaking 
-                  ? 'drop-shadow(0 0 40px rgba(255, 230, 0, 0.4))' 
-                  : (conversation.status === 'connected' ? 'drop-shadow(0 0 20px rgba(255, 255, 255, 0.15))' : 'drop-shadow(0 -10px 30px rgba(0,0,0,0.8))')
-        }}
-        onClick={toggleConversation}
-        onPointerDown={(e) => {
-          if (activeMode !== 'tools') e.currentTarget.style.transform = `translateX(-50%) scale(0.95)`;
-          else e.currentTarget.style.transform = `scale(0.95)`;
-        }}
-        onPointerUp={(e) => {
-          if (activeMode !== 'tools') e.currentTarget.style.transform = `translateX(-50%) scale(1)`;
-          else e.currentTarget.style.transform = `scale(1)`;
-        }}
-        onPointerLeave={(e) => {
-          if (activeMode !== 'tools') e.currentTarget.style.transform = `translateX(-50%) scale(1)`;
-          else e.currentTarget.style.transform = `scale(1)`;
-        }}
-        title={conversation.status === 'connected' ? "Tap to Disconnect" : "Tap to Connect"}
-      >
-        <img 
-          src="/tcg-character.png" 
-          alt="The Cruise God"
-          style={{ width: '100%', height: 'auto', display: 'block', pointerEvents: 'none' }} 
-        />
+      {/* ── Character + Vision Eye Hotspot ── */}
+      <div style={{ position: 'relative', display: 'contents' }}>
+        <div
+          style={{
+            position: activeMode === 'tools' ? 'fixed' : 'absolute',
+            bottom: activeMode === 'tools' ? '30px' : '-5vh',
+            left: activeMode === 'tools' ? 'auto' : '50%',
+            right: activeMode === 'tools' ? '30px' : 'auto',
+            transform: activeMode === 'tools'
+              ? `scale(${conversation.isSpeaking ? 1.05 : 1})`
+              : `translateX(-50%) scale(${conversation.isSpeaking ? 1.05 : 1})`,
+            zIndex: activeMode === 'tools' ? 100 : 5,
+            width: activeMode === 'tools' ? '100px' : 'min(85vw, 420px)',
+            transition: 'all 0.4s cubic-bezier(0.25, 1, 0.5, 1)',
+            animation: conversation.isSpeaking ? 'speaking-bounce 1s infinite ease-in-out' : 'idle-float 5s infinite ease-in-out',
+            filter: conversation.isSpeaking
+              ? 'drop-shadow(0 0 40px rgba(245,200,0,0.55))'
+              : conversation.status === 'connected'
+                ? 'drop-shadow(0 0 22px rgba(245,200,0,0.2))'
+                : 'drop-shadow(0 -10px 30px rgba(0,0,0,0.8))',
+          }}
+        >
+          <img
+            src="/tcg-character.png"
+            alt="The Cruise God"
+            style={{ width: '100%', height: 'auto', display: 'block', pointerEvents: 'none' }}
+          />
+          {/* Vision eye hotspot — overlaid on visor area */}
+          {isStarted && (
+            <button
+              onClick={() => { setCameraTask('general'); setCameraPrompt(undefined); setShowCamera(true); }}
+              aria-label="Open TCG Vision"
+              style={{
+                position: 'absolute',
+                top: activeMode === 'tools' ? '18%' : '28%',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                background: 'rgba(245,200,0,0.12)',
+                border: '1.5px solid rgba(245,200,0,0.55)',
+                borderRadius: '99px',
+                padding: '5px 12px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                cursor: 'pointer',
+                backdropFilter: 'blur(6px)',
+                animation: 'eye-glow-pulse 2.5s ease-in-out infinite',
+                transition: 'all 0.18s ease',
+                minWidth: 'unset', minHeight: 'unset',
+                zIndex: 10,
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="#F5C800">
+                <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+              </svg>
+              <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#F5C800', letterSpacing: '0.05em', textTransform: 'uppercase' }}>VISION</span>
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Floating Action Buttons */}
+      {/* ── Broadcast Control Strip (bottom-center) ── */}
       {isStarted && (
-        <div style={{ position: 'absolute', bottom: '24px', left: '16px', display: 'flex', flexDirection: 'column', gap: '12px', zIndex: 60, alignItems: 'center' }}>
-          {/* Mic Mute Button */}
+        <div style={{
+          position: 'fixed', bottom: showTranscript ? 'calc(65vh + 12px)' : '24px',
+          left: '50%', transform: 'translateX(-50%)',
+          zIndex: 65, display: 'flex', alignItems: 'center',
+          gap: '6px',
+          background: 'rgba(14,14,20,0.88)',
+          backdropFilter: 'blur(16px)',
+          border: `1px solid ${conversation.status === 'connected' ? 'rgba(245,200,0,0.25)' : 'rgba(255,255,255,0.1)'}`,
+          borderRadius: '99px', padding: '6px 10px',
+          boxShadow: '0 4px 24px rgba(0,0,0,0.6)',
+          transition: 'bottom 0.35s cubic-bezier(0.4,0,0.2,1)',
+          whiteSpace: 'nowrap',
+        }}>
+          {/* Live dot */}
+          {conversation.status === 'connected' && (
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ff4444', display: 'inline-block', animation: 'mic-live-pulse 1.4s ease-in-out infinite', flexShrink: 0 }} />
+          )}
+          <span style={{ fontSize: '0.62rem', fontWeight: 800, color: conversation.status === 'connected' ? '#F5C800' : 'rgba(255,245,214,0.35)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            {conversation.status === 'connected' ? (isMicMuted ? 'MUTED' : 'LIVE') : 'OFFLINE'}
+          </span>
+          <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.12)', margin: '0 4px' }} />
+          {/* Mute toggle */}
           <button
             onClick={toggleMicMute}
-            className={`mic-mute-btn${isMicMuted ? ' muted' : ''}`}
-            title={isMicMuted ? 'Unmute' : 'Mute Mic'}
-            aria-label={isMicMuted ? 'Unmute microphone' : 'Mute microphone'}
-          >
-            {isMicMuted ? '🔇' : '🎤'}
-          </button>
-          {/* Manual Memory Capture Button */}
-          <button
-            onClick={() => handleCreateMemory({ type: 'moment', title: 'Captured Memory', content: 'Manually saved by you.' })}
+            disabled={conversation.status !== 'connected'}
             style={{
-              width: '52px',
-              height: '52px',
-              borderRadius: '50%',
-              background: 'rgba(30, 10, 60, 0.85)',
-              border: '2px solid rgba(0, 229, 255, 0.5)',
-              color: '#00E5FF',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              boxShadow: '0 4px 16px rgba(0, 229, 255, 0.35)',
-              transition: 'transform 0.1s ease-in-out',
-              fontSize: '1.4rem'
+              background: isMicMuted ? 'rgba(204,16,16,0.2)' : 'rgba(245,200,0,0.1)',
+              border: isMicMuted ? '1px solid rgba(204,16,16,0.5)' : '1px solid rgba(245,200,0,0.35)',
+              borderRadius: '99px', padding: '5px 10px',
+              display: 'flex', alignItems: 'center', gap: '5px',
+              cursor: conversation.status === 'connected' ? 'pointer' : 'not-allowed',
+              opacity: conversation.status === 'connected' ? 1 : 0.4,
+              transition: 'all 0.18s ease',
+              minWidth: 'unset', minHeight: 'unset',
             }}
-            aria-label="Capture Memory"
-            onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.9)'}
-            onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
-            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            aria-label={isMicMuted ? 'Unmute' : 'Mute'}
           >
-            📸
+            {isMicMuted ? (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="#ff7070"><path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z"/></svg>
+            ) : (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="#F5C800"><path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/></svg>
+            )}
+            <span style={{ fontSize: '0.6rem', fontWeight: 800, color: isMicMuted ? '#ff7070' : '#F5C800', letterSpacing: '0.04em' }}>{isMicMuted ? 'UNMUTE' : 'MUTE'}</span>
           </button>
-
-          {/* Manual TCG Vision Button */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-            <button
-              onClick={() => {
-                setCameraTask('general');
-                setCameraPrompt(undefined);
-                setShowCamera(true);
-              }}
-              style={{
-                width: '60px',
-                height: '60px',
-                borderRadius: '16px',
-                background: 'linear-gradient(145deg, #FF8C00, #CC1010)',
-                border: '2px solid rgba(255, 140, 0, 0.5)',
-                color: '#fff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                boxShadow: '0 6px 20px rgba(204, 16, 16, 0.5)',
-                transition: 'transform 0.1s ease-in-out',
-                fontSize: '1.5rem',
-              }}
-              aria-label="Toggle TCG Vision"
-              onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.9)'}
-              onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
-              onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-            >
-              👁️
-            </button>
-            <span style={{ fontSize: '0.6rem', fontWeight: 900, color: '#1a0040', textTransform: 'uppercase', letterSpacing: '0.05em', textShadow: '0 1px 2px rgba(255,255,255,0.3)' }}>VISION</span>
-          </div>
-          
-          {/* CruiseHQ Group Chat Button — distinctly branded with group icon + CREW label */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-            <button
-              onClick={() => setShowCruiseHQ(true)}
-              style={{
-                width: '60px',
-                height: '60px',
-                borderRadius: '16px',
-                background: 'linear-gradient(145deg, #8B0000, #CC1010)',
-                border: '2px solid rgba(255, 80, 0, 0.5)',
-                color: '#FFE600',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                boxShadow: '0 6px 20px rgba(180, 10, 10, 0.6)',
-                transition: 'transform 0.1s ease-in-out',
-              }}
-              aria-label="Toggle CruiseHQ Chat"
-              onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.9)'}
-              onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
-              onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-            >
-              {/* Group people icon */}
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
-              </svg>
-            </button>
-            <span style={{ fontSize: '0.6rem', fontWeight: 900, color: '#FFE600', textTransform: 'uppercase', letterSpacing: '0.05em', textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>CREW</span>
-          </div>
-
-          {/* TCG AI Text Chat Button — distinctly branded with TCG label */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-            <button
-              onClick={() => setShowTranscript(prev => !prev)}
-              style={{
-                width: '60px',
-                height: '60px',
-                borderRadius: '16px',
-                background: showTranscript ? 'linear-gradient(145deg, #8B0000, #CC1010)' : 'linear-gradient(145deg, #5A0000, #8B0000)',
-                border: showTranscript ? '2px solid #FFE600' : '2px solid rgba(255, 150, 0, 0.5)',
-                color: '#FFE600',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                boxShadow: showTranscript ? '0 6px 24px rgba(255, 230, 0, 0.6)' : '0 6px 20px rgba(255, 230, 0, 0.35)',
-                transition: 'all 0.15s ease-in-out',
-                gap: '2px',
-              }}
-              aria-label="Toggle TCG Text Chat"
-              onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.9)'}
-              onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
-              onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-            >
-              {showTranscript ? (
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-              ) : (
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-              )}
-              <span style={{ fontSize: '0.55rem', fontWeight: 900, letterSpacing: '0.04em' }}>TCG</span>
-            </button>
-            <span style={{ fontSize: '0.6rem', fontWeight: 900, color: '#FFE600', textTransform: 'uppercase', letterSpacing: '0.05em', textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>CHAT</span>
-          </div>
+          <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.12)', margin: '0 4px' }} />
+          {/* Disconnect */}
+          <button
+            onClick={toggleConversation}
+            style={{
+              background: conversation.status === 'connected' ? 'rgba(139,21,21,0.25)' : 'rgba(245,200,0,0.1)',
+              border: conversation.status === 'connected' ? '1px solid rgba(204,16,16,0.5)' : '1px solid rgba(245,200,0,0.35)',
+              borderRadius: '99px', padding: '5px 10px',
+              display: 'flex', alignItems: 'center', gap: '5px',
+              cursor: 'pointer', transition: 'all 0.18s ease',
+              minWidth: 'unset', minHeight: 'unset',
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill={conversation.status === 'connected' ? '#ff7070' : '#F5C800'}>
+              {conversation.status === 'connected'
+                ? <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+                : <path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56-.35-.12-.74-.03-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/>}
+            </svg>
+            <span style={{ fontSize: '0.6rem', fontWeight: 800, color: conversation.status === 'connected' ? '#ff7070' : '#F5C800', letterSpacing: '0.04em' }}>{conversation.status === 'connected' ? 'END' : 'CONNECT'}</span>
+          </button>
         </div>
       )}
+
+      {/* ── Side Action Buttons (right edge) ── */}
+      {isStarted && (
+        <div style={{ position: 'fixed', right: '14px', bottom: '50%', transform: 'translateY(50%)', zIndex: 60, display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center' }}>
+          {/* Memory capture */}
+          <button
+            onClick={() => handleCreateMemory({ type: 'moment', title: 'Captured Memory', content: 'Manually saved.' })}
+            aria-label="Capture Memory"
+            style={{ width: 48, height: 48, borderRadius: '14px', background: 'rgba(14,14,20,0.88)', border: '1.5px solid rgba(245,200,0,0.3)', color: '#F5C800', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', gap: 3, backdropFilter: 'blur(12px)', transition: 'transform 0.12s ease', minWidth: 'unset', minHeight: 'unset', boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}
+            onPointerDown={(e) => e.currentTarget.style.transform = 'scale(0.9)'}
+            onPointerUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            onPointerLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 5h-3.17L15 3H9L7.17 5H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-8 13c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+            <span style={{ fontSize: '0.45rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase' }}>SAVE</span>
+          </button>
+          {/* CruiseHQ */}
+          <button
+            onClick={() => setShowCruiseHQ(true)}
+            aria-label="Open CruiseHQ"
+            style={{ width: 48, height: 48, borderRadius: '14px', background: 'rgba(139,21,21,0.5)', border: '1.5px solid rgba(204,16,16,0.5)', color: '#F5C800', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', gap: 3, backdropFilter: 'blur(12px)', transition: 'transform 0.12s ease', minWidth: 'unset', minHeight: 'unset', boxShadow: '0 4px 16px rgba(139,21,21,0.5)' }}
+            onPointerDown={(e) => e.currentTarget.style.transform = 'scale(0.9)'}
+            onPointerUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            onPointerLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+            <span style={{ fontSize: '0.45rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase' }}>CREW</span>
+          </button>
+          {/* Chat */}
+          <button
+            onClick={() => setShowTranscript(prev => !prev)}
+            aria-label="Toggle Chat"
+            style={{ width: 48, height: 48, borderRadius: '14px', background: showTranscript ? 'rgba(245,200,0,0.18)' : 'rgba(14,14,20,0.88)', border: showTranscript ? '1.5px solid rgba(245,200,0,0.65)' : '1.5px solid rgba(245,200,0,0.2)', color: '#F5C800', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', gap: 3, backdropFilter: 'blur(12px)', transition: 'all 0.15s ease', minWidth: 'unset', minHeight: 'unset', boxShadow: showTranscript ? '0 0 20px rgba(245,200,0,0.3)' : '0 4px 16px rgba(0,0,0,0.5)' }}
+            onPointerDown={(e) => e.currentTarget.style.transform = 'scale(0.9)'}
+            onPointerUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            onPointerLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <span style={{ fontSize: '0.45rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase' }}>CHAT</span>
+          </button>
+        </div>
+      )}
+
 
       {/* Transcript Drawer Overlay */}
       <div className={`transcript-drawer ${showTranscript ? 'open' : ''}`}>
@@ -1084,10 +935,10 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
             exit={{ opacity: 0 }}
             style={{ position: 'fixed', inset: 0, zIndex: 120, background: 'rgba(5, 5, 15, 0.9)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}
           >
-            <div className="glass-card-heavy" style={{ padding: '32px', maxWidth: '500px', width: '100%', border: '1px solid var(--accent-cyan)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <h2 style={{ color: 'var(--accent-cyan)', fontWeight: 900, fontSize: '1.5rem', margin: 0 }}>CRUISER ROSTER</h2>
-                <button onClick={() => setShowGroupsModal(false)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: '1.5rem', cursor: 'pointer' }}>✕</button>
+            <div className="glass-card-heavy" style={{ padding: '28px', maxWidth: '480px', width: '100%', border: '1px solid rgba(245,200,0,0.2)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h2 style={{ fontFamily: "'Russo One', sans-serif", color: '#F5C800', fontWeight: 900, fontSize: '1.3rem', margin: 0, letterSpacing: '0.04em' }}>CRUISER ROSTER</h2>
+                <button onClick={() => setShowGroupsModal(false)} style={{ background: 'rgba(245,200,0,0.08)', border: '1px solid rgba(245,200,0,0.25)', color: '#F5C800', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '0.9rem' }}>✕</button>
               </div>
 
               <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '24px', paddingRight: '8px' }}>
@@ -1150,62 +1001,48 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
             exit={{ opacity: 0 }}
             style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(5, 5, 15, 0.9)', backdropFilter: 'blur(12px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px' }}
           >
-            <div className="glass-card-heavy" style={{ padding: '40px', textAlign: 'center', maxWidth: '380px', width: '100%', border: '1px solid rgba(224, 64, 251, 0.3)', boxShadow: '0 10px 50px rgba(0,0,0,0.8)' }}>
-              <h2 className="gradient-text" style={{ fontSize: '2rem', fontWeight: 900, marginBottom: '8px', background: 'var(--gradient-magenta)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.5px' }}>
-                Join CruiseHQ
-              </h2>
-              <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.95rem', marginBottom: '24px', lineHeight: 1.5 }}>
-                Scan to join <strong>{roomId}</strong>. Chat with everyone, or submit private truths, dares, charades, and songs!
-              </p>
-              
-              <div style={{ background: '#fff', padding: '16px', borderRadius: '24px', marginBottom: '32px', display: 'inline-block', boxShadow: '0 0 30px rgba(224, 64, 251, 0.3)' }}>
+            <div className="glass-card-heavy" style={{ padding: '36px', textAlign: 'center', maxWidth: '360px', width: '100%', border: '1px solid rgba(245,200,0,0.2)', boxShadow: '0 10px 50px rgba(0,0,0,0.8)' }}>
+              <h2 style={{ fontFamily: "'Russo One', sans-serif", fontSize: '1.6rem', fontWeight: 900, marginBottom: '6px', background: 'linear-gradient(90deg,#F5C800,#FF8C00)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '0.04em' }}>Join CruiseHQ</h2>
+              <p style={{ color: 'rgba(255,245,214,0.65)', fontSize: '0.88rem', marginBottom: '24px', lineHeight: 1.6 }}>Scan to join <strong style={{ color: '#F5C800' }}>{roomId}</strong>. Chat, submit dares, truths, and songs!</p>
+              <div style={{ background: '#fff', padding: '14px', borderRadius: '20px', marginBottom: '28px', display: 'inline-block', boxShadow: '0 0 40px rgba(245,200,0,0.2)' }}>
                 {typeof window !== 'undefined' && (
-                  <img 
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(`${window.location.origin}/room/${roomId}`)}`} 
-                    alt="CruiseHQ QR Code" 
-                    style={{ width: '220px', height: '220px', display: 'block' }} 
-                  />
+                  <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`${window.location.origin}/room/${roomId}`)}`} alt="CruiseHQ QR Code" style={{ width: '200px', height: '200px', display: 'block' }} />
                 )}
               </div>
-              
-              <button 
-                onClick={() => setShowQR(false)} 
-                style={{ background: 'var(--gradient-magenta)', border: 'none', padding: '16px 24px', borderRadius: 'var(--radius-full)', color: '#fff', fontWeight: 800, cursor: 'pointer', width: '100%', fontSize: '1rem', boxShadow: '0 4px 20px rgba(224, 64, 251, 0.4)' }}
-              >
-                Close Scanner
-              </button>
+              <button onClick={() => setShowQR(false)} style={{ background: 'linear-gradient(135deg,#F5C800,#FF8C00)', border: 'none', padding: '14px 24px', borderRadius: '99px', color: '#0A0A10', fontWeight: 900, cursor: 'pointer', width: '100%', fontSize: '0.95rem', fontFamily: "'Russo One', sans-serif", letterSpacing: '0.04em' }}>CLOSE SCANNER</button>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* 8. Splash Screen Overlay */}
+      {/* ── Splash Screen ── */}
       {!isStarted && (
         <div style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 100,
-          background: 'rgba(9, 9, 11, 0.6)',
-          backdropFilter: 'blur(10px)',
-          WebkitBackdropFilter: 'blur(10px)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '24px',
-          textAlign: 'center'
+          position: 'fixed', inset: 0, zIndex: 100,
+          background: 'radial-gradient(ellipse 80% 60% at 50% 110%, rgba(245,200,0,0.08) 0%, transparent 60%), linear-gradient(180deg, #0A0A12 0%, #14141C 100%)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          padding: '32px', textAlign: 'center', gap: '0',
         }}>
-          <img src="/tcg-logo.png" alt="TCG Character" style={{ width: 'min(260px, 72vw)', height: 'auto', marginBottom: '40px', filter: 'drop-shadow(0 15px 30px rgba(0,0,0,0.6))', animation: 'idle-float 4s infinite ease-in-out', willChange: 'transform' }} />
-          <button 
-            className="chunky-button"
-            onClick={() => {
-              setIsStarted(true);
-              startConversation();
+          <img
+            src="/tcg-logo.png"
+            alt="TCG"
+            style={{
+              width: 'min(280px, 75vw)', height: 'auto',
+              marginBottom: '48px',
+              filter: 'drop-shadow(0 0 40px rgba(245,200,0,0.45)) drop-shadow(0 20px 40px rgba(0,0,0,0.7))',
+              animation: 'idle-float 4s infinite ease-in-out',
+              willChange: 'transform',
             }}
-            style={{ transform: 'translateZ(0)' }}
+          />
+          <button
+            className="chunky-button"
+            onClick={() => { setIsStarted(true); startConversation(); }}
           >
-            TAP TO ENTER
+            TAP TO UNLEASH
           </button>
+          <p style={{ marginTop: '16px', color: 'rgba(245,200,0,0.45)', fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            Audio starts instantly
+          </p>
         </div>
       )}
 

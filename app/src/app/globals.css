@@ -1,76 +1,272 @@
+@import url('https://fonts.googleapis.com/css2?family=Russo+One&family=DM+Sans:wght@400;500;600;700;800;900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ─── TCG Brand Palette (derived from The Cruise God logo) ─── */
 :root {
-  --background: #05050f;
-  --foreground: #ededed;
-  --accent-yellow: #FFE600;
-  --accent-magenta: #E040FB;
-  --accent-cyan: #00E5FF;
-  --gradient-magenta: linear-gradient(135deg, #E040FB, #7B1FA2);
-  --gradient-yellow: linear-gradient(135deg, #FFE600, #FF8C00);
+  /* Core brand colors */
+  --gold:          #F5C800;   /* Graffiti lettering */
+  --gold-deep:     #C9960A;   /* Letter shading / depth */
+  --gold-glow:     rgba(245, 200, 0, 0.35);
+  --crimson:       #8B1515;   /* Hoodie base */
+  --crimson-hot:   #CC1010;   /* Hoodie highlight */
+  --crimson-glow:  rgba(204, 16, 16, 0.4);
+  --charcoal:      #14141C;   /* Helmet / background */
+  --charcoal-mid:  #1E1E28;   /* Elevated surfaces */
+  --charcoal-high: #26263A;   /* Card surfaces */
+  --amber:         #FF8C00;   /* Logo outline / accent */
+  --amber-soft:    rgba(255, 140, 0, 0.25);
+  --cream:         #FFF5D6;   /* Primary text on dark */
+
+  /* Semantic aliases */
+  --background:    var(--charcoal);
+  --foreground:    var(--cream);
+  --accent:        var(--gold);
+  --accent-2:      var(--crimson-hot);
+  --muted:         rgba(255, 245, 214, 0.45);
+
+  /* Gradients */
+  --grad-gold:    linear-gradient(135deg, #F5C800 0%, #FF8C00 100%);
+  --grad-crimson: linear-gradient(135deg, #CC1010 0%, #8B1515 100%);
+  --grad-dark:    linear-gradient(180deg, #1A1A24 0%, #0F0F16 100%);
+  --grad-hero:    radial-gradient(ellipse 80% 60% at 50% 110%, rgba(245,200,0,0.1) 0%, transparent 70%),
+                  radial-gradient(ellipse 60% 40% at 80% 20%, rgba(139,21,21,0.12) 0%, transparent 60%),
+                  linear-gradient(180deg, #14141C 0%, #0A0A12 100%);
+
   --radius-full: 9999px;
-  --text-secondary: rgba(255, 255, 255, 0.7);
+  --radius-lg:   20px;
+  --radius-md:   14px;
+  --radius-sm:   8px;
+}
+
+/* ─── Base ─── */
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
 }
 
 body {
   color: var(--foreground);
-  background: var(--background);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  overflow-x: hidden;
+  background: var(--charcoal);
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  overflow: hidden;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+/* ─── Typography ─── */
+.font-display {
+  font-family: 'Russo One', sans-serif;
+  letter-spacing: 0.02em;
 }
 
-/* TCG Specific UI Utilities */
-.gradient-text {
-  background-clip: text;
+.text-gold {
+  color: var(--gold);
+}
+
+.text-gradient-gold {
+  background: var(--grad-gold);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ─── Glass Components ─── */
+.glass {
+  background: rgba(30, 30, 40, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(245, 200, 0, 0.12);
+}
+
+.glass-gold {
+  background: rgba(245, 200, 0, 0.08);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(245, 200, 0, 0.25);
+}
+
+.glass-crimson {
+  background: rgba(139, 21, 21, 0.2);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(204, 16, 16, 0.3);
 }
 
 .glass-card-heavy {
-  background: rgba(15, 5, 25, 0.7);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(224, 64, 251, 0.25);
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+  background: rgba(18, 18, 26, 0.92);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid rgba(245, 200, 0, 0.15);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(245,200,0,0.05);
   border-radius: 24px;
 }
 
+/* ─── Buttons ─── */
 .chunky-button {
-  background: var(--gradient-yellow);
-  color: #111;
+  font-family: 'Russo One', sans-serif;
+  background: var(--grad-gold);
+  color: #0A0A10;
   font-weight: 900;
-  padding: 16px 36px;
+  padding: 18px 44px;
   border-radius: var(--radius-full);
   border: none;
-  font-size: 1.2rem;
-  letter-spacing: -0.5px;
+  font-size: 1.15rem;
+  letter-spacing: 0.06em;
   cursor: pointer;
   transform: translateZ(0);
-  transition: all 0.2s cubic-bezier(0.25, 1, 0.5, 1);
-  box-shadow: 0 8px 30px rgba(255, 230, 0, 0.4);
+  transition: all 0.18s cubic-bezier(0.25, 1, 0.5, 1);
+  box-shadow: 0 8px 32px rgba(245, 200, 0, 0.5), 0 2px 0 rgba(255,255,255,0.15) inset;
+  text-transform: uppercase;
+}
+.chunky-button:hover {
+  box-shadow: 0 12px 48px rgba(245, 200, 0, 0.7), 0 2px 0 rgba(255,255,255,0.15) inset;
+  transform: translateY(-1px) scale(1.02);
 }
 .chunky-button:active {
-  transform: scale(0.95);
+  transform: scale(0.97);
+  box-shadow: 0 4px 16px rgba(245, 200, 0, 0.4);
 }
 
-/* Animations */
+/* ─── Mode Badge (override in ModeSelector) ─── */
+.mode-badge { border: none; outline: none; }
+
+/* ─── Mic Mute Button ─── */
+.mic-mute-btn {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  font-size: 1.1rem;
+  background: rgba(245, 200, 0, 0.1);
+  border: 2px solid rgba(245, 200, 0, 0.4);
+  color: var(--gold);
+  transition: all 0.18s ease;
+}
+.mic-mute-btn.muted {
+  background: rgba(204, 16, 16, 0.15);
+  border-color: rgba(204, 16, 16, 0.5);
+  color: #ff7070;
+}
+
+/* ─── Camera Control Buttons ─── */
+.camera-ctrl-btn {
+  display: flex; align-items: center; gap: '4px';
+  padding: 6px 14px; border-radius: var(--radius-full);
+  background: rgba(245, 200, 0, 0.1);
+  border: 1px solid rgba(245, 200, 0, 0.35);
+  color: var(--gold);
+  font-size: 0.75rem; font-weight: 700;
+  cursor: pointer; white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+/* ─── Transcript / Chat Drawer ─── */
+.transcript-drawer {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 50;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  border-top: 1px solid transparent;
+  background: transparent;
+}
+.transcript-drawer.open {
+  max-height: 65vh;
+  border-top: 1px solid rgba(245, 200, 0, 0.18);
+  background: rgba(12, 12, 18, 0.97);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+
+/* ─── Toast ─── */
+.glass-toast {
+  position: fixed;
+  top: max(90px, calc(env(safe-area-inset-top) + 80px));
+  left: 50%; transform: translateX(-50%);
+  z-index: 200;
+  background: rgba(20, 20, 28, 0.95);
+  border: 1px solid rgba(245, 200, 0, 0.25);
+  border-radius: var(--radius-full);
+  padding: 10px 20px;
+  display: flex; align-items: center; gap: 12px;
+  color: var(--cream);
+  font-size: 0.82rem; font-weight: 600;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  white-space: nowrap;
+  max-width: calc(100vw - 32px);
+}
+
+/* ─── Animations ─── */
 @keyframes idle-float {
-  0% { transform: translateY(0); }
-  50% { transform: translateY(-15px); }
-  100% { transform: translateY(0); }
+  0%   { transform: translateY(0px); }
+  50%  { transform: translateY(-12px); }
+  100% { transform: translateY(0px); }
+}
+@keyframes idle-float-tools {
+  0%   { transform: translateY(0px) scale(1); }
+  50%  { transform: translateY(-6px) scale(1.02); }
+  100% { transform: translateY(0px) scale(1); }
+}
+@keyframes speaking-bounce {
+  0%   { transform: scale(1.0); }
+  40%  { transform: scale(1.06); }
+  100% { transform: scale(1.0); }
+}
+@keyframes gold-shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+@keyframes mic-live-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.85); }
+}
+@keyframes eye-glow-pulse {
+  0%, 100% { box-shadow: 0 0 10px rgba(245,200,0,0.6), 0 0 20px rgba(245,200,0,0.3); }
+  50%       { box-shadow: 0 0 20px rgba(245,200,0,0.9), 0 0 40px rgba(245,200,0,0.5); }
+}
+@keyframes ping {
+  75%, 100% { transform: scale(2); opacity: 0; }
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes slide-down-toast {
+  from { transform: translateY(-8px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+@keyframes slide-up-in {
+  from { transform: translateY(20px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
 }
 
-@keyframes speaking-bounce {
-  0% { transform: scale(1.0); }
-  50% { transform: scale(1.08); }
-  100% { transform: scale(1.0); }
+/* ─── Page Container ─── */
+.page-container {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--grad-hero);
+}
+
+/* ─── Background texture overlay ─── */
+.page-container::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 200px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+@layer utilities {
+  .text-balance { text-wrap: balance; }
 }

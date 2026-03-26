@@ -9,11 +9,27 @@ interface ModeSelectorProps {
   onModeChange: (mode: TCGMode) => void;
 }
 
-const modes: { id: TCGMode; label: string; icon: string; desc: string }[] = [
-  { id: 'locator', label: 'Locator', icon: '📍', desc: 'Find spots & vibes' },
-  { id: 'plug', label: 'The Plug', icon: '🔌', desc: 'Find services' },
-  { id: 'game-master', label: 'Game Master', icon: '🎮', desc: 'Run the fun' },
-  { id: 'tools', label: 'Tools', icon: '🎲', desc: 'Party tools' },
+const modes: { id: TCGMode; label: string; svgPath: string }[] = [
+  {
+    id: 'locator',
+    label: 'Locator',
+    svgPath: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
+  },
+  {
+    id: 'plug',
+    label: 'The Plug',
+    svgPath: 'M16 7V3h-2v4H10V3H8v4c0 2.1 1.4 3.84 3.33 4.38V21h1.34v-9.62C14.6 10.84 16 9.1 16 7zM7 8H5v7h2v3h2v-3h2V8H7z',
+  },
+  {
+    id: 'game-master',
+    label: 'Game Master',
+    svgPath: 'M15 7.5V2H9v5.5l3 3 3-3zM7.5 9H2v6h5.5l3-3-3-3zM9 16.5V22h6v-5.5l-3-3-3 3zM16.5 9l-3 3 3 3H22V9h-5.5z',
+  },
+  {
+    id: 'tools',
+    label: 'Tools',
+    svgPath: 'M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z',
+  },
 ];
 
 export default function ModeSelector({ activeMode, onModeChange }: ModeSelectorProps) {
@@ -23,8 +39,7 @@ export default function ModeSelector({ activeMode, onModeChange }: ModeSelectorP
       gap: '4px',
       padding: '4px',
       justifyContent: 'center',
-      flexWrap: 'wrap',
-      maxWidth: '95vw',
+      flexWrap: 'nowrap',
     }}>
       {modes.map((mode) => {
         const isActive = activeMode === mode.id;
@@ -32,41 +47,43 @@ export default function ModeSelector({ activeMode, onModeChange }: ModeSelectorP
           <button
             key={mode.id}
             onClick={() => onModeChange(mode.id)}
-            className={`mode-badge ${mode.id}`}
             style={{
               cursor: 'pointer',
-              padding: 'clamp(5px, 1.2vw, 10px) clamp(6px, 2vw, 14px)',
+              padding: 'clamp(6px, 1.5vw, 10px) clamp(8px, 2.5vw, 16px)',
               borderRadius: '30px',
-              color: isActive ? '#fff' : 'rgba(255, 255, 255, 0.6)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontFamily: "'DM Sans', sans-serif",
               fontWeight: isActive ? 800 : 600,
-              fontSize: 'clamp(0.58rem, 1.8vw, 0.75rem)',
+              fontSize: 'clamp(0.6rem, 1.8vw, 0.74rem)',
               whiteSpace: 'nowrap',
               minHeight: 'unset',
               minWidth: 'unset',
-              background: isActive
-                ? mode.id === 'locator' ? 'rgba(0, 240, 255, 0.15)'
-                  : mode.id === 'plug' ? 'rgba(255, 215, 0, 0.15)'
-                  : mode.id === 'tools' ? 'rgba(255, 140, 0, 0.15)'
-                    : 'rgba(248, 0, 177, 0.15)'
-                : 'rgba(255, 255, 255, 0.05)',
-              border: `1px solid ${isActive
-                ? mode.id === 'locator' ? 'rgba(0, 240, 255, 0.6)'
-                  : mode.id === 'plug' ? 'rgba(255, 215, 0, 0.6)'
-                  : mode.id === 'tools' ? 'rgba(255, 140, 0, 0.6)'
-                    : 'rgba(248, 0, 177, 0.6)'
-                : 'rgba(255, 255, 255, 0.1)'}`,
               transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-              transform: isActive ? 'scale(1.05)' : 'scale(1)',
-              boxShadow: isActive ? `0 4px 12px ${
-                mode.id === 'locator' ? 'rgba(0, 240, 255, 0.2)'
-                  : mode.id === 'plug' ? 'rgba(255, 215, 0, 0.2)'
-                  : mode.id === 'tools' ? 'rgba(255, 140, 0, 0.2)'
-                    : 'rgba(248, 0, 177, 0.2)'
-              }` : 'none',
+              background: isActive
+                ? 'linear-gradient(135deg, rgba(245,200,0,0.22) 0%, rgba(255,140,0,0.18) 100%)'
+                : 'rgba(255, 255, 255, 0.04)',
+              border: isActive
+                ? '1.5px solid rgba(245, 200, 0, 0.65)'
+                : '1.5px solid rgba(255, 255, 255, 0.09)',
+              color: isActive ? '#F5C800' : 'rgba(255, 245, 214, 0.5)',
+              boxShadow: isActive
+                ? '0 4px 16px rgba(245, 200, 0, 0.2), 0 0 0 1px rgba(245,200,0,0.08) inset'
+                : 'none',
+              transform: isActive ? 'scale(1.04)' : 'scale(1)',
             }}
             aria-label={`Switch to ${mode.label} mode`}
           >
-            <span style={{ marginRight: '6px' }}>{mode.icon}</span>
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              style={{ flexShrink: 0, opacity: isActive ? 1 : 0.7 }}
+            >
+              <path d={mode.svgPath} />
+            </svg>
             <span>{mode.label}</span>
           </button>
         );
