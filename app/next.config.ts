@@ -1,13 +1,10 @@
 import { withSentryConfig } from "@sentry/nextjs";
 import type { NextConfig } from "next";
-import path from "path";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  // Use alternate build dir to avoid Windows file corruption in .next/server
+  // Use alternate build dir for local dev to prevent Windows file-lock crashes
   distDir: process.env.NODE_ENV === 'development' ? '.next-dev' : '.next',
-  // Fix for Windows paths with spaces
-  outputFileTracingRoot: path.join(__dirname, "../../"),
   // Prevents Windows heap crash during build trace collection on large projects
   outputFileTracingExcludes: {
     '*': ['node_modules/@swc/**'],
