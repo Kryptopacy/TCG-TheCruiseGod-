@@ -74,6 +74,7 @@ export default function ConversationManager() {
   const [cameraPrompt, setCameraPrompt] = useState<string | undefined>(undefined);
   
   const messageIdCounter = useRef(0);
+  const micStreamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     // Load profile from Supabase user metadata (set on profile page)
@@ -126,6 +127,19 @@ export default function ConversationManager() {
     setShowLocationInput, 
     getDeviceLocation 
   } = useDeviceLocation();
+
+  // Maintain fresh context for the onConnect closure to bypass ElevenLabs overrides restrictions
+  const contextRef = useRef<string>('');
+  useEffect(() => {
+    contextRef.current = `[SYSTEM] The user just opened TCG. Context:
+- Name: ${userName || 'Unknown yet (Ask naturally)'}
+- Location: ${location || 'Unknown (Ask if needed for spots/plugs)'}
+- UI Mode: ${activeMode}
+- CruiseHQ Room Code: ${roomId} | Active Guests: ${activeGuests.length > 0 ? activeGuests.join(', ') : 'None yet'}
+${wingmanPreferences ? `- Wingman Protocols: ${wingmanPreferences}\nAlways honour these preferences without needing to be reminded.` : ''}
+
+Greet them with energy right now! Be warm, hype, and brief.`;
+  }, [userName, location, activeMode, roomId, activeGuests, wingmanPreferences]);
 
   const addMessage = useCallback((role: 'user' | 'agent' | 'system', content: string, metadata?: any) => {
     const msg: Message = {
@@ -239,11 +253,9 @@ export default function ConversationManager() {
       addMessage('system', '🎙️ Connected! TCG is live.');
       // Kick off agent's first speaking turn — without this the agent waits silently
       setTimeout(() => {
-        try {
-          conversationRef.current?.sendUserMessage(
-            '[SYSTEM] The user just opened TCG. Greet them with energy right now. Be warm, hype, and brief.'
-          );
-        } catch { /* session may have closed */ }
+        if (conversationRef.current?.status === 'connected') {
+          try { conversationRef.current.sendUserMessage(contextRef.current); } catch { /* closed */ }
+        }
       }, 900);
     },
     onDisconnect: () => {
@@ -251,8 +263,9 @@ export default function ConversationManager() {
     },
     onMessage: (message) => {
       console.log('[TCG] Message:', message);
-      if (message.source === 'ai' && typeof message.message === 'string') {
-        addMessage('agent', message.message);
+      if (typeof message.message === 'string') {
+        if (message.source === 'ai') addMessage('agent', message.message);
+        if (message.source === 'user') addMessage('user', message.message);
       }
     },
     onError: (error) => {
@@ -265,6 +278,21 @@ export default function ConversationManager() {
   useEffect(() => {
     conversationRef.current = conversation;
   });
+
+  // Cleanup ElevenLabs session and mic stream on Fast Refresh unmount
+  useEffect(() => {
+    return () => {
+      // Cleanly terminate active WebSocket to avoid 'CLOSING or CLOSED state' zombie messages
+      if (conversationRef.current?.status === 'connected') {
+        conversationRef.current.endSession().catch(() => {});
+      }
+      // Guarantee mic turns off when component vanishes
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach(track => track.stop());
+        micStreamRef.current = null;
+      }
+    };
+  }, []);
 
   /**
    * Safe wrapper around sendUserMessage — silently skips if the WebSocket is not
@@ -401,14 +429,15 @@ export default function ConversationManager() {
     if (structured?.total) {
       addMessage('system', `💰 Detected total: $${structured.total}. ${structured.summary || ''}`);
     }
-  }, [addMessage, conversation]);
+  }, [addMessage, safeInjectMessage]);
 
   const startConversation = useCallback(async () => {
     try {
       setErrorMessage(null);
 
-      // Request microphone permission
-      await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Request microphone permission and hold handle to the stream for later cleanup
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      micStreamRef.current = stream;
 
       // Get signed URL from our API route
       const response = await fetch('/api/get-signed-url');
@@ -435,57 +464,6 @@ export default function ConversationManager() {
             return 'Screen captured successfully.';
           },
         },
-        overrides: {
-          agent: {
-            prompt: {
-              prompt: `
-<dynamic_context>
-User Name: ${userName ? userName : 'Unknown yet (Ask naturally)'}
-User Location: ${location ? location : 'Unknown (Ask if needed for spots/plugs)'}
-Current UI Mode: ${activeMode}
-CruiseHQ Room Code: ${roomId} | Active Guests: ${activeGuests.length > 0 ? activeGuests.join(', ') : 'None yet'}
-${wingmanPreferences ? `
-User's Wingman Protocols: ${wingmanPreferences}
-Always honour these preferences without needing to be reminded.` : ''}
-</dynamic_context>
-
-<role>
-You are TCG — The Cruise God. You are a world-class AI concierge, local expert, and game master all in one. Your personality is magnetic — you're the friend who always knows where to go, who to call, and how to turn a dead hangout into the best night ever.
-</role>
-
-<personality_core>
-- ENERGY: Confident, warm, quick-witted. Match the user's energy (hyped or chill). Never monotone or robotic.
-- PERSONALIZATION: ${userName ? 'Greet them joyfully by name!' : 'Warmly ask for their name in your very first message so you can personalize the conversation!'} Use it naturally.
-- HUMOR: Light, natural humor. Roast gently, hype genuinely. Never corny.
-- BREVITY: You are voice-first. Max 2-3 sentences per turn. No bullet lists. No walls of text. Be concise.
-- CULTURAL AWARENESS: Be inclusive and adaptive. Read the room.
-</personality_core>
-
-<core_workflows>
-1. 🔍 FINDING SPOTS: Call switchMode("locator") then displayResults(). Ask highly dynamic, situational questions to narrow it down if vague. Lead with top 1-2 picks.
-2. 🔌 FINDING SERVICES: Call switchMode("plug") then displayResults(). Ask dynamic, context-aware questions to get specifics. Frame results as personal recommendations.
-3. 🎮 THE GAME MASTER PROTOCOL: Call switchMode("game-master"). Suggest a game from our database. Ask, "Want me to moderate?". If they say yes, YOU become the host. Call openTool(tool) to deploy the Scoreboard, Timer, or Randomizer. Track turns, enforce the rules boldly, and announce the final winner.
-4. 🎲 PARTY TOOLS: Call openTool(tool) for quick utilities (coin, dice, bill, truth, scoreboard, bottle, randomizer, timer, charades). Provide instant color commentary.
-5. 📸 VISION: Call analyzeImage() when user wants to scan a receipt (task: bill_split), check a drink (task: drink_check), or analyze anything visual (task: general).
-6. 👥 CRUISEHQ & POLLS: Call showQR() to invite guests. When guests mention you (@TCG) in room chat, respond directly to their query. If a Poll or Randomizer result is posted, acknowledge it neutrally and respectfully without roasting.
-</core_workflows>
-
-<critical_behaviors>
-- LATENCY MGT: Say a natural filler BEFORE tools execute. Never leave silence.
-- BARGE-IN RECOVERY: Acknowledge naturally ("Say less," "Got it") and handle new request instantly.
-- MEMORIES: Call createMemory for: game wins, epic quotes, location drops, plug moments that came through, CruiseHQ highlights. Always provide a viral shareCaption. Suggest captures proactively (max 2-3 per session).
-  - type options: location_drop | game_win | plug_moment | cruisehq_quote | party_milestone | group_capture | moment
-- MODE TRANSITIONS: Detect transitions automatically from context. Call switchMode to update UI.
-- VISION RESULTS: When you receive a [Vision Analysis Complete] message, speak it naturally. For bill_split results, break down who owes what based on the guest count.
-</critical_behaviors>
-
-<advanced_nlp_handling>
-Flawlessly handle messy natural language: Extract core intent from rambling. Abstract vague reasoning. Triage multi-threading requests. Natively comprehend modern slang. Auto-pivot on interruptions without ever saying "As I was saying."
-</advanced_nlp_handling>
-              `,
-            },
-          },
-        },
       });
     } catch (error) {
       console.error('Failed to start conversation:', error);
@@ -500,6 +478,13 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
 
   const stopConversation = useCallback(async () => {
     await conversation.endSession();
+    
+    // Shut down mic hardware immediately when session ends manually
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach(track => track.stop());
+      micStreamRef.current = null;
+    }
+    
     addMessage('system', 'Session ended. Tap the mic to start again.');
   }, [conversation, addMessage]);
 
@@ -514,18 +499,19 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
   const handleTextMessage = useCallback((text: string) => {
     addMessage('user', text);
     // Route typed messages into the live ElevenLabs agent session
-    if (conversation.status === 'connected') {
-      conversation.sendUserMessage(text);
-    }
-  }, [addMessage, conversation]);
+    safeInjectMessage(text);
+  }, [addMessage, safeInjectMessage]);
 
   // Auto-detect location
   const handleGetLocation = useCallback(() => {
     getDeviceLocation(
-      (msg) => addMessage('system', msg),
+      (msg) => {
+        addMessage('system', msg);
+        safeInjectMessage(`[SYSTEM] The user just updated their location UI: ${msg}`);
+      },
       (err) => setErrorMessage(err)
     );
-  }, [getDeviceLocation, addMessage]);
+  }, [getDeviceLocation, addMessage, safeInjectMessage]);
 
   // Derive group assignment for a player
   const getPlayerGroup = (name: string) => {
@@ -557,12 +543,12 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
       {/* ── Header ── */}
       <div style={{
         position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20,
-        background: 'rgba(14, 14, 20, 0.96)',
+        background: 'rgba(12, 4, 22, 0.97)',
         backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-        borderBottom: '1px solid rgba(245, 200, 0, 0.14)',
+        borderBottom: '1px solid rgba(245, 200, 0, 0.2)',
         padding: 'max(12px, env(safe-area-inset-top)) 16px 12px',
-        boxShadow: '0 2px 32px rgba(0,0,0,0.7)',
-        borderRadius: '0 0 18px 18px',
+        boxShadow: '0 4px 40px rgba(0, 0, 0, 0.6)',
+        borderRadius: '0 0 20px 20px',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
@@ -574,19 +560,19 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '5px', minWidth: 0 }}>
             <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               {isStarted && conversation.status === 'connected' && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '4px 9px', borderRadius: '99px', background: 'rgba(204,16,16,0.15)', border: '1px solid rgba(204,16,16,0.4)', color: '#ff7070', fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.06em' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '4px 9px', borderRadius: '99px', background: 'var(--grad-red)', border: 'none', color: '#fff', fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.06em' }}>
                   <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ff4444', display: 'inline-block', animation: 'mic-live-pulse 1.4s ease-in-out infinite' }} />
                   LIVE
                 </div>
               )}
               {isStarted && (
-                <button onClick={() => setShowQR(true)} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 9px', borderRadius: '99px', border: '1.5px solid rgba(245,200,0,0.4)', background: 'rgba(245,200,0,0.07)', color: '#F5C800', fontSize: '0.62rem', fontWeight: 800, whiteSpace: 'nowrap', cursor: 'pointer', minWidth: 'unset', minHeight: 'unset' }}>
+                <button onClick={() => setShowQR(true)} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 9px', borderRadius: '99px', border: 'none', background: 'rgba(18, 4, 32, 0.9)', color: '#F5C800', fontSize: '0.62rem', fontWeight: 800, whiteSpace: 'nowrap', cursor: 'pointer', minWidth: 'unset', minHeight: 'unset', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M3 11h8V3H3v8zm2-6h4v4H5V5zM3 21h8v-8H3v8zm2-6h4v4H5v-4zM13 3v8h8V3h-8zm6 6h-4V5h4v4zM13 13h2v2h-2zm2 2h2v2h-2zm2-2h2v2h-2zm-4 4h2v2h-2zm2 2h2v2h-2zm2-2h2v2h-2zm-2-6h2v2h-2z"/></svg>
                   {roomId}
                 </button>
               )}
               {isStarted && activeGuests.length > 0 && (
-                <div onClick={() => setShowGroupsModal(true)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 9px', borderRadius: '99px', background: 'rgba(255,140,0,0.1)', border: '1px solid rgba(255,140,0,0.3)', color: '#FF8C00', fontSize: '0.62rem', fontWeight: 800 }}>
+                <div onClick={() => setShowGroupsModal(true)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 9px', borderRadius: '99px', background: 'rgba(18, 4, 32, 0.88)', border: '1px solid rgba(255,140,0,0.4)', color: '#FF8C00', fontSize: '0.62rem', fontWeight: 800, boxShadow: '0 2px 8px rgba(0,0,0,0.25)' }}>
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
                   {activeGuests.length}{Object.keys(groups).length > 0 ? ` · ${Object.keys(groups).length}G` : ''}
                 </div>
@@ -594,14 +580,14 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
             </div>
             {showLocationInput ? (
               <div style={{ background: 'rgba(245,200,0,0.07)', padding: '7px 10px', display: 'flex', gap: '7px', alignItems: 'center', width: '100%', maxWidth: '300px', borderRadius: '12px', border: '1px solid rgba(245,200,0,0.2)' }}>
-                <textarea value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Edit address..." style={{ flex: 1, background: 'transparent', border: 'none', color: '#FFF5D6', fontSize: '0.76rem', outline: 'none', minHeight: '30px', resize: 'none', fontFamily: 'inherit', padding: '2px 0' }} rows={2} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && location.trim()) { e.preventDefault(); setShowLocationInput(false); addMessage('system', `📍 Location: ${location}`); } }} autoFocus />
+                <textarea value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Edit address..." style={{ flex: 1, background: 'transparent', border: 'none', color: '#FFF5D6', fontSize: '0.76rem', outline: 'none', minHeight: '30px', resize: 'none', fontFamily: 'inherit', padding: '2px 0' }} rows={2} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && location.trim()) { e.preventDefault(); setShowLocationInput(false); addMessage('system', `📍 Location: ${location}`); safeInjectMessage(`[SYSTEM] User manually set location to: ${location}`); } }} autoFocus />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   <button onClick={handleGetLocation} disabled={isGettingLocation} style={{ background: 'var(--grad-gold)', border: 'none', color: '#000', padding: '4px 8px', borderRadius: '6px', fontSize: '0.62rem', cursor: 'pointer', fontWeight: 800, minWidth: 'unset', minHeight: 'unset' }}>{isGettingLocation ? '...' : 'Auto'}</button>
-                  {location.trim() && <button onClick={() => setShowLocationInput(false)} style={{ background: 'rgba(100,220,100,0.15)', border: '1px solid rgba(100,220,100,0.35)', color: '#7dff7d', padding: '4px 8px', borderRadius: '6px', fontSize: '0.62rem', cursor: 'pointer', fontWeight: 900, minWidth: 'unset', minHeight: 'unset' }}>OK</button>}
+                  {location.trim() && <button onClick={() => { setShowLocationInput(false); safeInjectMessage(`[SYSTEM] User manually set location to: ${location}`); }} style={{ background: 'rgba(100,220,100,0.15)', border: '1px solid rgba(100,220,100,0.35)', color: '#7dff7d', padding: '4px 8px', borderRadius: '6px', fontSize: '0.62rem', cursor: 'pointer', fontWeight: 900, minWidth: 'unset', minHeight: 'unset' }}>OK</button>}
                 </div>
               </div>
             ) : (
-              <button onClick={() => setShowLocationInput(true)} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '99px', border: '1px solid rgba(245,200,0,0.18)', background: 'rgba(245,200,0,0.05)', color: 'rgba(245,200,0,0.65)', fontSize: '0.62rem', maxWidth: '200px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', fontWeight: 700, cursor: 'pointer', minWidth: 'unset', minHeight: 'unset' }}>
+              <button onClick={() => setShowLocationInput(true)} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '99px', border: '1px solid rgba(245,200,0,0.35)', background: 'rgba(18, 4, 32, 0.8)', color: 'rgba(245,200,0,0.9)', fontSize: '0.62rem', maxWidth: '200px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', fontWeight: 700, cursor: 'pointer', minWidth: 'unset', minHeight: 'unset', boxShadow: '0 2px 8px rgba(0,0,0,0.25)' }}>
                 <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
                 {location || 'Set Location'}
               </button>
@@ -630,7 +616,7 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
 
       {/* ── Mode Selector ── */}
       <div style={{ position: 'absolute', top: 'clamp(80px, 19vmin, 135px)', left: 0, right: 0, zIndex: 15, display: 'flex', justifyContent: 'center' }}>
-        <div style={{ background: 'rgba(14,14,20,0.82)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid rgba(245,200,0,0.13)', borderRadius: '99px', padding: '4px 6px', boxShadow: '0 4px 24px rgba(0,0,0,0.5)' }}>
+        <div style={{ background: 'rgba(10, 4, 18, 0.88)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)', border: '1px solid rgba(245,200,0,0.2)', borderRadius: '99px', padding: '4px 6px', boxShadow: '0 6px 32px rgba(0,0,0,0.45)' }}>
           <ModeSelector activeMode={activeMode} onModeChange={setActiveMode} />
         </div>
       </div>
@@ -687,22 +673,23 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
       <div style={{ position: 'relative', display: 'contents' }}>
         <div
           style={{
-            position: activeMode === 'tools' ? 'fixed' : 'absolute',
-            bottom: activeMode === 'tools' ? '30px' : '-5vh',
-            left: activeMode === 'tools' ? 'auto' : '50%',
-            right: activeMode === 'tools' ? '30px' : 'auto',
-            transform: activeMode === 'tools'
+            position: (activeMode === 'tools' || showTranscript || showCruiseHQ) ? 'fixed' : 'absolute',
+            bottom: showCruiseHQ ? 'auto' : (showTranscript ? 'auto' : (activeMode === 'tools' ? '30px' : '-5vh')),
+            top: showCruiseHQ ? '80px' : (showTranscript ? '10vh' : 'auto'),
+            left: showCruiseHQ ? 'auto' : (showTranscript ? '50%' : (activeMode === 'tools' ? 'auto' : '50%')),
+            right: showCruiseHQ ? '20px' : (activeMode === 'tools' ? '30px' : 'auto'),
+            transform: showCruiseHQ 
               ? `scale(${conversation.isSpeaking ? 1.05 : 1})`
-              : `translateX(-50%) scale(${conversation.isSpeaking ? 1.05 : 1})`,
-            zIndex: activeMode === 'tools' ? 100 : 5,
-            width: activeMode === 'tools' ? '100px' : 'min(85vw, 420px)',
-            transition: 'all 0.4s cubic-bezier(0.25, 1, 0.5, 1)',
+              : (showTranscript || activeMode !== 'tools' ? `translateX(-50%) scale(${conversation.isSpeaking ? 1.05 : 1})` : `scale(${conversation.isSpeaking ? 1.05 : 1})`),
+            zIndex: 150, /* always above overlays so conversation is uninterrupted */
+            width: showCruiseHQ ? '75px' : (showTranscript ? '140px' : (activeMode === 'tools' ? '90px' : 'min(85vw, 420px)')),
+            transition: 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
             animation: conversation.isSpeaking ? 'speaking-bounce 1s infinite ease-in-out' : 'idle-float 5s infinite ease-in-out',
             filter: conversation.isSpeaking
-              ? 'drop-shadow(0 0 40px rgba(245,200,0,0.55))'
+              ? 'drop-shadow(0 0 30px rgba(255,215,0,0.5))'
               : conversation.status === 'connected'
-                ? 'drop-shadow(0 0 22px rgba(245,200,0,0.2))'
-                : 'drop-shadow(0 -10px 30px rgba(0,0,0,0.8))',
+                ? 'drop-shadow(0 0 15px rgba(255,215,0,0.2))'
+                : 'drop-shadow(0 -5px 15px rgba(0,0,0,0.3))',
           }}
         >
           <img
@@ -717,11 +704,11 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
               aria-label="Open TCG Vision"
               style={{
                 position: 'absolute',
-                top: activeMode === 'tools' ? '18%' : '28%',
+                top: (showCruiseHQ) ? '18%' : (showTranscript ? '22%' : (activeMode === 'tools' ? '18%' : '28%')),
                 left: '50%',
                 transform: 'translateX(-50%)',
-                background: 'rgba(245,200,0,0.12)',
-                border: '1.5px solid rgba(245,200,0,0.55)',
+                background: 'rgba(18, 4, 32, 0.9)',
+                border: '1.5px solid rgba(245,200,0,0.8)',
                 borderRadius: '99px',
                 padding: '5px 12px',
                 display: 'flex',
@@ -735,10 +722,10 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
                 zIndex: 10,
               }}
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="#F5C800">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="#FFFFFF">
                 <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
               </svg>
-              <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#F5C800', letterSpacing: '0.05em', textTransform: 'uppercase' }}>VISION</span>
+              <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#FFFFFF', letterSpacing: '0.05em', textTransform: 'uppercase' }}>VISION</span>
             </button>
           )}
         </div>
@@ -751,11 +738,11 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
           left: '50%', transform: 'translateX(-50%)',
           zIndex: 65, display: 'flex', alignItems: 'center',
           gap: '6px',
-          background: 'rgba(14,14,20,0.88)',
-          backdropFilter: 'blur(16px)',
-          border: `1px solid ${conversation.status === 'connected' ? 'rgba(245,200,0,0.25)' : 'rgba(255,255,255,0.1)'}`,
+          background: 'rgba(10, 4, 18, 0.95)',
+          backdropFilter: 'blur(20px)',
+          border: `1.5px solid ${conversation.status === 'connected' ? 'rgba(245,200,0,0.35)' : 'rgba(255,255,255,0.12)'}`,
           borderRadius: '99px', padding: '6px 10px',
-          boxShadow: '0 4px 24px rgba(0,0,0,0.6)',
+          boxShadow: '0 6px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)',
           transition: 'bottom 0.35s cubic-bezier(0.4,0,0.2,1)',
           whiteSpace: 'nowrap',
         }}>
@@ -763,7 +750,7 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
           {conversation.status === 'connected' && (
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ff4444', display: 'inline-block', animation: 'mic-live-pulse 1.4s ease-in-out infinite', flexShrink: 0 }} />
           )}
-          <span style={{ fontSize: '0.62rem', fontWeight: 800, color: conversation.status === 'connected' ? '#F5C800' : 'rgba(255,245,214,0.35)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+          <span style={{ fontSize: '0.62rem', fontWeight: 800, fontFamily: 'var(--font-russo), sans-serif', color: conversation.status === 'connected' ? '#F5C800' : 'rgba(255,245,214,0.35)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
             {conversation.status === 'connected' ? (isMicMuted ? 'MUTED' : 'LIVE') : 'OFFLINE'}
           </span>
           <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.12)', margin: '0 4px' }} />
@@ -788,7 +775,7 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
             ) : (
               <svg width="13" height="13" viewBox="0 0 24 24" fill="#F5C800"><path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/></svg>
             )}
-            <span style={{ fontSize: '0.6rem', fontWeight: 800, color: isMicMuted ? '#ff7070' : '#F5C800', letterSpacing: '0.04em' }}>{isMicMuted ? 'UNMUTE' : 'MUTE'}</span>
+            <span style={{ fontSize: '0.6rem', fontWeight: 800, fontFamily: 'var(--font-russo), sans-serif', color: isMicMuted ? '#ff7070' : '#F5C800', letterSpacing: '0.04em' }}>{isMicMuted ? 'UNMUTE' : 'MUTE'}</span>
           </button>
           <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.12)', margin: '0 4px' }} />
           {/* Disconnect */}
@@ -808,7 +795,7 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
                 ? <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
                 : <path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56-.35-.12-.74-.03-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/>}
             </svg>
-            <span style={{ fontSize: '0.6rem', fontWeight: 800, color: conversation.status === 'connected' ? '#ff7070' : '#F5C800', letterSpacing: '0.04em' }}>{conversation.status === 'connected' ? 'END' : 'CONNECT'}</span>
+            <span style={{ fontSize: '0.6rem', fontWeight: 800, fontFamily: 'var(--font-russo), sans-serif', color: conversation.status === 'connected' ? '#ff7070' : '#F5C800', letterSpacing: '0.04em' }}>{conversation.status === 'connected' ? 'END' : 'CONNECT'}</span>
           </button>
         </div>
       )}
@@ -820,37 +807,39 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
           <button
             onClick={() => handleCreateMemory({ type: 'moment', title: 'Captured Memory', content: 'Manually saved.' })}
             aria-label="Capture Memory"
-            style={{ width: 48, height: 48, borderRadius: '14px', background: 'rgba(14,14,20,0.88)', border: '1.5px solid rgba(245,200,0,0.3)', color: '#F5C800', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', gap: 3, backdropFilter: 'blur(12px)', transition: 'transform 0.12s ease', minWidth: 'unset', minHeight: 'unset', boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}
+            style={{ width: 56, height: 56, borderRadius: '16px', background: 'rgba(18, 4, 32, 0.95)', border: '1px solid rgba(255,255,255,0.15)', color: '#FFFFFF', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', gap: 4, backdropFilter: 'blur(16px)', transition: 'transform 0.12s ease', minWidth: 'unset', minHeight: 'unset', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
             onPointerDown={(e) => e.currentTarget.style.transform = 'scale(0.9)'}
             onPointerUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
             onPointerLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 5h-3.17L15 3H9L7.17 5H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-8 13c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
-            <span style={{ fontSize: '0.45rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase' }}>SAVE</span>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M20 5h-3.17L15 3H9L7.17 5H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-8 13c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+            <span style={{ fontSize: '0.55rem', fontWeight: 800, fontFamily: 'var(--font-russo), sans-serif', letterSpacing: '0.04em', textTransform: 'uppercase' }}>SAVE</span>
           </button>
+          
           {/* CruiseHQ */}
           <button
             onClick={() => setShowCruiseHQ(true)}
             aria-label="Open CruiseHQ"
-            style={{ width: 48, height: 48, borderRadius: '14px', background: 'rgba(139,21,21,0.5)', border: '1.5px solid rgba(204,16,16,0.5)', color: '#F5C800', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', gap: 3, backdropFilter: 'blur(12px)', transition: 'transform 0.12s ease', minWidth: 'unset', minHeight: 'unset', boxShadow: '0 4px 16px rgba(139,21,21,0.5)' }}
+            style={{ width: 56, height: 56, borderRadius: '16px', background: 'var(--grad-red)', border: 'none', color: '#FFF', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', gap: 4, backdropFilter: 'blur(16px)', transition: 'transform 0.12s ease', minWidth: 'unset', minHeight: 'unset', boxShadow: '0 8px 32px rgba(232, 35, 42, 0.4)' }}
             onPointerDown={(e) => e.currentTarget.style.transform = 'scale(0.9)'}
             onPointerUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
             onPointerLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
-            <span style={{ fontSize: '0.45rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase' }}>CREW</span>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="#FFFFFF"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+            <span style={{ fontSize: '0.55rem', fontWeight: 800, fontFamily: 'var(--font-russo), sans-serif', color: '#FFFFFF', letterSpacing: '0.04em', textTransform: 'uppercase' }}>HQ</span>
           </button>
+          
           {/* Chat */}
           <button
             onClick={() => setShowTranscript(prev => !prev)}
             aria-label="Toggle Chat"
-            style={{ width: 48, height: 48, borderRadius: '14px', background: showTranscript ? 'rgba(245,200,0,0.18)' : 'rgba(14,14,20,0.88)', border: showTranscript ? '1.5px solid rgba(245,200,0,0.65)' : '1.5px solid rgba(245,200,0,0.2)', color: '#F5C800', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', gap: 3, backdropFilter: 'blur(12px)', transition: 'all 0.15s ease', minWidth: 'unset', minHeight: 'unset', boxShadow: showTranscript ? '0 0 20px rgba(245,200,0,0.3)' : '0 4px 16px rgba(0,0,0,0.5)' }}
+            style={{ width: 56, height: 56, borderRadius: '16px', background: showTranscript ? 'rgba(30, 6, 50, 0.98)' : 'rgba(18, 4, 32, 0.95)', border: showTranscript ? '1.5px solid rgba(245,200,0,0.8)' : '1px solid rgba(255,255,255,0.15)', color: '#FFFFFF', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', gap: 4, backdropFilter: 'blur(16px)', transition: 'all 0.15s ease', minWidth: 'unset', minHeight: 'unset', boxShadow: showTranscript ? '0 0 24px rgba(245,200,0,0.4)' : '0 8px 32px rgba(0,0,0,0.4)' }}
             onPointerDown={(e) => e.currentTarget.style.transform = 'scale(0.9)'}
             onPointerUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
             onPointerLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            <span style={{ fontSize: '0.45rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase' }}>CHAT</span>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <span style={{ fontSize: '0.55rem', fontWeight: 800, fontFamily: 'var(--font-russo), sans-serif', letterSpacing: '0.04em', textTransform: 'uppercase' }}>CHAT</span>
           </button>
         </div>
       )}
@@ -875,6 +864,7 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
             isConnected={conversation.status === 'connected'}
             isAgentSpeaking={conversation.isSpeaking}
             onPushImage={(img) => setPushedImage(img)}
+            cruiseId={userName}
           />
         </AnimatePresence>
       </div>
@@ -1019,7 +1009,7 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
       {!isStarted && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 100,
-          background: 'radial-gradient(ellipse 80% 60% at 50% 110%, rgba(245,200,0,0.08) 0%, transparent 60%), linear-gradient(180deg, #0A0A12 0%, #14141C 100%)',
+          background: 'var(--grad-hero)',
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
           padding: '32px', textAlign: 'center', gap: '0',
         }}>
@@ -1040,7 +1030,7 @@ Flawlessly handle messy natural language: Extract core intent from rambling. Abs
           >
             TAP TO UNLEASH
           </button>
-          <p style={{ marginTop: '16px', color: 'rgba(245,200,0,0.45)', fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+          <p style={{ marginTop: '16px', color: 'rgba(18, 4, 32, 0.7)', fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
             Audio starts instantly
           </p>
         </div>

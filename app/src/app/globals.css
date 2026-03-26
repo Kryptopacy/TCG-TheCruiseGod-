@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Russo+One&family=DM+Sans:wght@400;500;600;700;800;900&display=swap');
+
 
 @tailwind base;
 @tailwind components;
@@ -9,31 +9,34 @@
   /* Core brand colors */
   --gold:          #F5C800;   /* Graffiti lettering */
   --gold-deep:     #C9960A;   /* Letter shading / depth */
-  --gold-glow:     rgba(245, 200, 0, 0.35);
+  --gold-glow:     rgba(245, 200, 0, 0.45);
   --crimson:       #8B1515;   /* Hoodie base */
   --crimson-hot:   #CC1010;   /* Hoodie highlight */
-  --crimson-glow:  rgba(204, 16, 16, 0.4);
-  --charcoal:      #14141C;   /* Helmet / background */
-  --charcoal-mid:  #1E1E28;   /* Elevated surfaces */
-  --charcoal-high: #26263A;   /* Card surfaces */
+  --crimson-glow:  rgba(204, 16, 16, 0.45);
+  --charcoal:      #120420;   /* Rich deep purple-void instead of flat black */
+  --charcoal-mid:  #21093A;   /* Elevated surfaces (deep purple) */
+  --charcoal-high: #2D0C4C;   /* Card surfaces */
   --amber:         #FF8C00;   /* Logo outline / accent */
-  --amber-soft:    rgba(255, 140, 0, 0.25);
-  --cream:         #FFF5D6;   /* Primary text on dark */
+  --amber-soft:    rgba(255, 140, 0, 0.35);
+  --cream:         #FFF8E7;   /* Primary text on dark */
+  --red-hot:       #E8232A;   /* ELEVENHACKS pill red — vivid accent */
+  --red-hot-glow:  rgba(232, 35, 42, 0.45);
 
   /* Semantic aliases */
-  --background:    var(--charcoal);
-  --foreground:    var(--cream);
-  --accent:        var(--gold);
+  --background:    var(--gold);
+  --foreground:    var(--charcoal);
+  --accent:        var(--red-hot);
   --accent-2:      var(--crimson-hot);
-  --muted:         rgba(255, 245, 214, 0.45);
+  --muted:         rgba(18, 4, 32, 0.55);
 
   /* Gradients */
   --grad-gold:    linear-gradient(135deg, #F5C800 0%, #FF8C00 100%);
   --grad-crimson: linear-gradient(135deg, #CC1010 0%, #8B1515 100%);
-  --grad-dark:    linear-gradient(180deg, #1A1A24 0%, #0F0F16 100%);
-  --grad-hero:    radial-gradient(ellipse 80% 60% at 50% 110%, rgba(245,200,0,0.1) 0%, transparent 70%),
-                  radial-gradient(ellipse 60% 40% at 80% 20%, rgba(139,21,21,0.12) 0%, transparent 60%),
-                  linear-gradient(180deg, #14141C 0%, #0A0A12 100%);
+  --grad-red:     linear-gradient(135deg, #E8232A 0%, #C01018 100%);
+  --grad-dark:    linear-gradient(180deg, #21093A 0%, #120420 100%);
+  
+  /* ✦ Clean, punchy yellow brand hero — pure bright yellow matching the submission cover */
+  --grad-hero:    linear-gradient(135deg, #FFEB1A 0%, #FFD700 100%);
 
   --radius-full: 9999px;
   --radius-lg:   20px;
@@ -50,8 +53,8 @@ html, body {
 
 body {
   color: var(--foreground);
-  background: var(--charcoal);
-  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--background);
+  font-family: var(--font-dm-sans), -apple-system, BlinkMacSystemFont, sans-serif;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -59,7 +62,7 @@ body {
 
 /* ─── Typography ─── */
 .font-display {
-  font-family: 'Russo One', sans-serif;
+  font-family: var(--font-russo), sans-serif;
   letter-spacing: 0.02em;
 }
 
@@ -75,60 +78,76 @@ body {
 }
 
 /* ─── Glass Components ─── */
+/* Dark glass — high-contrast on the brand yellow background */
 .glass {
-  background: rgba(30, 30, 40, 0.75);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(245, 200, 0, 0.12);
+  background: rgba(18, 4, 32, 0.82);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid rgba(245, 200, 0, 0.22);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+  color: var(--cream);
 }
 
 .glass-gold {
-  background: rgba(245, 200, 0, 0.08);
+  background: rgba(18, 4, 32, 0.85);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(245, 200, 0, 0.25);
+  border: 1px solid rgba(245, 200, 0, 0.3);
+  color: var(--cream);
 }
 
 .glass-crimson {
-  background: rgba(139, 21, 21, 0.2);
+  background: rgba(18, 4, 32, 0.8);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(204, 16, 16, 0.3);
+  border: 1px solid rgba(204, 16, 16, 0.4);
+  color: var(--cream);
+}
+
+/* Red accent glass — ELEVENHACKS pill style */
+.glass-red {
+  background: var(--grad-red);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: none;
+  color: #fff;
 }
 
 .glass-card-heavy {
-  background: rgba(18, 18, 26, 0.92);
+  background: rgba(14, 4, 26, 0.95);
   backdrop-filter: blur(28px);
   -webkit-backdrop-filter: blur(28px);
-  border: 1px solid rgba(245, 200, 0, 0.15);
-  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(245,200,0,0.05);
+  border: 1px solid rgba(245, 200, 0, 0.18);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(245,200,0,0.06) inset;
   border-radius: 24px;
+  color: var(--cream);
 }
 
 /* ─── Buttons ─── */
 .chunky-button {
   font-family: 'Russo One', sans-serif;
-  background: var(--grad-gold);
-  color: #0A0A10;
+  background: rgba(18, 4, 32, 0.95);
+  color: var(--gold);
   font-weight: 900;
   padding: 18px 44px;
   border-radius: var(--radius-full);
-  border: none;
+  border: 1.5px solid rgba(245, 200, 0, 0.5);
   font-size: 1.15rem;
   letter-spacing: 0.06em;
   cursor: pointer;
   transform: translateZ(0);
   transition: all 0.18s cubic-bezier(0.25, 1, 0.5, 1);
-  box-shadow: 0 8px 32px rgba(245, 200, 0, 0.5), 0 2px 0 rgba(255,255,255,0.15) inset;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 0 rgba(245,200,0,0.15) inset;
   text-transform: uppercase;
 }
 .chunky-button:hover {
-  box-shadow: 0 12px 48px rgba(245, 200, 0, 0.7), 0 2px 0 rgba(255,255,255,0.15) inset;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.7), 0 2px 0 rgba(245,200,0,0.3) inset;
   transform: translateY(-1px) scale(1.02);
+  border-color: rgba(245, 200, 0, 0.8);
 }
 .chunky-button:active {
   transform: scale(0.97);
-  box-shadow: 0 4px 16px rgba(245, 200, 0, 0.4);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
 /* ─── Mode Badge (override in ModeSelector) ─── */
@@ -171,6 +190,8 @@ body {
   z-index: 50;
   max-height: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
   transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
   border-top: 1px solid transparent;
   background: transparent;
@@ -181,6 +202,40 @@ body {
   background: rgba(12, 12, 18, 0.97);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
+}
+
+.transcript-area {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.transcript-bubble {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 12px 16px;
+  color: var(--cream);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  word-wrap: break-word;
+}
+.transcript-bubble.user {
+  background: rgba(245, 200, 0, 0.08);
+  border-color: rgba(245, 200, 0, 0.2);
+}
+.transcript-bubble.agent {
+  background: rgba(204, 16, 16, 0.1);
+  border-color: rgba(204, 16, 16, 0.2);
+}
+.transcript-bubble.system {
+  background: transparent;
+  border: none;
+  color: rgba(255, 248, 231, 0.6);
+  font-style: italic;
+  font-size: 0.8rem;
+  text-align: center;
 }
 
 /* ─── Toast ─── */

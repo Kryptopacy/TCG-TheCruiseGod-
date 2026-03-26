@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-export const runtime = 'edge';
-
 const TASK_PROMPTS: Record<string, string> = {
   bill_split: `You are a receipt analysis assistant. Analyze this receipt image and extract:
 1. The total bill amount

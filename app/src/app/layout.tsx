@@ -1,7 +1,20 @@
 import type { Metadata } from "next";
+import { DM_Sans, Russo_One } from "next/font/google";
 import "./globals.css";
 import AuthButton from "./components/AuthButton";
 import { cookies } from 'next/headers';
+
+const dmSans = DM_Sans({
+  subsets: ["latin"],
+  variable: "--font-dm-sans",
+  weight: ["400", "500", "700", "900"],
+});
+
+const russoOne = Russo_One({
+  subsets: ["latin"],
+  variable: "--font-russo",
+  weight: ["400"],
+});
 
 export const viewport = {
   width: "device-width",
@@ -54,8 +67,8 @@ export default async function RootLayout({
   const isDemoMode = cookieStore.get('tcg_demo_mode')?.value !== 'false';
 
   return (
-    <html lang="en">
-      <body>
+    <html lang="en" className={`${dmSans.variable} ${russoOne.variable}`}>
+      <body className="antialiased">
         {!isDemoMode && <AuthButton />}
         {children}
       </body>

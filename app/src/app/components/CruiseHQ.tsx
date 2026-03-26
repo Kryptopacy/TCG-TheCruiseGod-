@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@/utils/supabase/client';
 
 // Slot Machine Randomizer
 function ChatRandomizer({ activeGroupMembers, onClose, onResult }: { activeGroupMembers: string[], onClose: () => void, onResult: (res: string) => void }) {
@@ -75,6 +75,35 @@ function PollCreator({ onClose, onSubmit }: { onClose: () => void, onSubmit: (q:
   );
 }
 
+// Drop Submission UI
+function DropUI({ onClose, onSubmit }: { onClose: () => void, onSubmit: (type: string, content: string, anon: boolean) => void }) {
+  const [content, setContent] = useState('');
+  const [type, setType] = useState('Truth');
+  const [anon, setAnon] = useState(false);
+
+  const inputStyle = { width: '100%', background: 'rgba(40,8,8,0.7)', border: '1px solid rgba(255,150,0,0.2)', color: '#fff', padding: '8px 12px', borderRadius: '8px', marginBottom: '8px', outline: 'none' };
+  
+  return (
+    <div style={{ background: 'rgba(255,50,150,0.07)', padding: '16px', borderRadius: '16px', marginBottom: '12px', border: '1px solid rgba(255,50,150,0.25)' }}>
+      <h4 style={{ margin: '0 0 8px 0', color: '#FF64C8', fontFamily: 'var(--font-display)' }}>📥 Submit Drop</h4>
+      <select value={type} onChange={e => setType(e.target.value)} style={{ ...inputStyle, appearance: 'none' }}>
+        <option>Truth</option>
+        <option>Dare</option>
+        <option>Charade</option>
+        <option>Suggestion</option>
+      </select>
+      <textarea placeholder="Type your drop..." value={content} onChange={e => setContent(e.target.value)} style={{ ...inputStyle, minHeight: '60px', resize: 'vertical', fontFamily: 'inherit' }} />
+      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: 'rgba(255,255,255,0.6)', marginBottom: '12px' }}>
+        <input type="checkbox" checked={anon} onChange={e => setAnon(e.target.checked)} /> Anonymous Drop
+      </label>
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <button onClick={() => { if (content) onSubmit(type, content, anon); }} style={{ flex: 1, background: 'linear-gradient(135deg, #FF64C8, #CC1080)', color: '#fff', border: 'none', padding: '8px', borderRadius: '8px', fontWeight: 800, cursor: 'pointer' }}>SEND TO TCG</button>
+        <button onClick={onClose} style={{ background: 'transparent', color: 'rgba(255,255,255,0.5)', border: 'none', cursor: 'pointer', padding: '0 8px' }}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 export interface ChatMessage {
   id: string;
   sender: string;
@@ -101,10 +130,7 @@ interface CruiseHQProps {
   onClose: () => void;
 }
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-);
+const supabase = createClient();
 
 const GROUP_COLORS = ['#FFE600', '#FF8C00', '#FF2A2A', '#FF6B00', '#FF4500'];
 
@@ -125,6 +151,7 @@ export default function CruiseHQ({ roomId, currentUser, groups, onSaveMemory, is
   const [input, setInput] = useState('');
   const [showPollUI, setShowPollUI] = useState(false);
   const [showRandomizerUI, setShowRandomizerUI] = useState(false);
+  const [showDropUI, setShowDropUI] = useState(false);
   const [replyTarget, setReplyTarget] = useState<{ author: string; preview: string } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -258,7 +285,7 @@ export default function CruiseHQ({ roomId, currentUser, groups, onSaveMemory, is
       </div>
 
       {/* Chat Area */}
-      <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div ref={scrollRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {currentMessages.length === 0 && (
           <p style={{ color: 'rgba(255,200,80,0.3)', textAlign: 'center', marginTop: '40px', fontStyle: 'italic' }}>No messages yet. Start the vibe! 🔥</p>
         )}
@@ -402,6 +429,21 @@ export default function CruiseHQ({ roomId, currentUser, groups, onSaveMemory, is
             />
           </div>
         )}
+        {showDropUI && (
+          <div style={{ paddingTop: '12px' }}>
+            <DropUI
+              onClose={() => setShowDropUI(false)}
+              onSubmit={(type, content, anon) => {
+                sendMessage({ 
+                  text: `📥 **${type.toUpperCase()} DROP!**\n\n"${content}"`, 
+                  highlight: true, 
+                  sender: anon ? 'Anonymous Cruiser' : currentUser 
+                });
+                setShowDropUI(false);
+              }}
+            />
+          </div>
+        )}
 
         {/* Reply preview */}
         {replyTarget && (
@@ -420,9 +462,13 @@ export default function CruiseHQ({ roomId, currentUser, groups, onSaveMemory, is
             style={{ background: 'rgba(255,100,0,0.15)', color: '#FF8C00', border: '1px solid rgba(255,100,0,0.25)', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '1.1rem', minWidth: '40px', minHeight: '40px' }}
           >📊</button>
           <button
-            onClick={() => setShowRandomizerUI(!showRandomizerUI)}
+            onClick={() => {setShowRandomizerUI(!showRandomizerUI); setShowPollUI(false); setShowDropUI(false);}}
             style={{ background: 'rgba(255,200,0,0.12)', color: '#FFE600', border: '1px solid rgba(255,200,0,0.2)', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '1.1rem', minWidth: '40px', minHeight: '40px' }}
           >🎯</button>
+          <button
+            onClick={() => {setShowDropUI(!showDropUI); setShowPollUI(false); setShowRandomizerUI(false);}}
+            style={{ background: 'rgba(255,100,200,0.15)', color: '#FF64C8', border: '1px solid rgba(255,100,200,0.25)', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '1.1rem', minWidth: '40px', minHeight: '40px' }}
+          >📥</button>
           <input
             value={input}
             onChange={e => setInput(e.target.value)}

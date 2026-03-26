@@ -143,9 +143,20 @@ export default function ChatFallback({
             >
               {/* CruiseID tag on user bubbles */}
               {isUser && (
-                <span className="cruise-id-tag">
-                  🚢 {cruiseId || 'You'}
-                </span>
+                <div style={{
+                  fontSize: '0.68rem',
+                  fontWeight: 900,
+                  color: '#FFE600',
+                  marginBottom: '5px',
+                  fontFamily: 'var(--font-display)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}>
+                  🚢 {cruiseId || 'CRUISER'}
+                </div>
               )}
 
               {/* Agent label */}

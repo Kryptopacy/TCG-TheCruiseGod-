@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { performFirecrawlSearch } from '@/app/lib/firecrawl';
 import { SearchRequest } from '@/app/types/search';
 
-export const runtime = 'edge';
-
 export async function POST(request: NextRequest) {
   try {
     const body: SearchRequest = await request.json();

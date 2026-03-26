@@ -18,7 +18,7 @@ const modes: { id: TCGMode; label: string; svgPath: string }[] = [
   {
     id: 'plug',
     label: 'The Plug',
-    svgPath: 'M16 7V3h-2v4H10V3H8v4c0 2.1 1.4 3.84 3.33 4.38V21h1.34v-9.62C14.6 10.84 16 9.1 16 7zM7 8H5v7h2v3h2v-3h2V8H7z',
+    svgPath: 'M16 7V3h-2v4H10V3H8v4c0 2.1 1.4 3.84 3.33 4.38V21h1.34v-9.62C14.6 10.84 16 9.1 16 7zM7 8H5v7h2v3h2V8H7z',
   },
   {
     id: 'game-master',
@@ -61,16 +61,17 @@ export default function ModeSelector({ activeMode, onModeChange }: ModeSelectorP
               minHeight: 'unset',
               minWidth: 'unset',
               transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+              // Dark pill on yellow background — matches submission cover feature labels
               background: isActive
-                ? 'linear-gradient(135deg, rgba(245,200,0,0.22) 0%, rgba(255,140,0,0.18) 100%)'
-                : 'rgba(255, 255, 255, 0.04)',
+                ? 'linear-gradient(135deg, rgba(30, 6, 50, 0.98) 0%, rgba(18, 4, 32, 0.98) 100%)'
+                : 'rgba(18, 4, 32, 0.78)',
               border: isActive
-                ? '1.5px solid rgba(245, 200, 0, 0.65)'
-                : '1.5px solid rgba(255, 255, 255, 0.09)',
-              color: isActive ? '#F5C800' : 'rgba(255, 245, 214, 0.5)',
+                ? '1.5px solid rgba(245, 200, 0, 0.7)'
+                : '1.5px solid rgba(255, 255, 255, 0.12)',
+              color: isActive ? '#F5C800' : 'rgba(255, 248, 231, 0.75)',
               boxShadow: isActive
-                ? '0 4px 16px rgba(245, 200, 0, 0.2), 0 0 0 1px rgba(245,200,0,0.08) inset'
-                : 'none',
+                ? '0 4px 20px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(245,200,0,0.12) inset'
+                : '0 2px 10px rgba(0,0,0,0.25)',
               transform: isActive ? 'scale(1.04)' : 'scale(1)',
             }}
             aria-label={`Switch to ${mode.label} mode`}
@@ -80,7 +81,7 @@ export default function ModeSelector({ activeMode, onModeChange }: ModeSelectorP
               height="13"
               viewBox="0 0 24 24"
               fill="currentColor"
-              style={{ flexShrink: 0, opacity: isActive ? 1 : 0.7 }}
+              style={{ flexShrink: 0, opacity: isActive ? 1 : 0.6 }}
             >
               <path d={mode.svgPath} />
             </svg>
