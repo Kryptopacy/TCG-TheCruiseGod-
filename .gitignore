@@ -36,3 +36,5 @@ skills-lock.json
 # Explicitly tracked (referenced in README)
 !DOCS.md
 !elevenlabs_json_tools.md
+tcg_devto_article.md
+tcg_x_article.md
