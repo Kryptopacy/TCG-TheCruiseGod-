@@ -24,7 +24,6 @@ Always use the detected currency symbol in the summary. Keep the summary convers
 
 **Step 1 — OCR Data Extraction (highest priority):**
 - Read and transcribe any visible barcode number (EAN-13, UPC-A, etc.)
-- Extract the full NAFDAC registration number if present (Nigerian regulatory body)
 - Extract any batch code, lot number, or serial number visible on the label or bottle
 - Extract any QR code data text (e.g. a URL or code string)
 
@@ -40,15 +39,14 @@ Respond with a JSON object like:
   "type": "Cognac",
   "ocr": {
     "barcode": "3245995961018",
-    "nafdac": "A7-0066L",
     "batchCode": "L23F097",
     "qrData": null
   },
   "authenticityScore": 88,
   "verdict": "Likely Authentic ✅",
-  "flags": ["NAFDAC number present", "Barcode readable", "Hologram intact"],
+  "flags": ["Barcode readable", "Hologram intact"],
   "redFlags": [],
-  "summary": "NAFDAC number A7-0066L spotted and barcode reads 3245995961018. Label quality looks solid — this one checks out. Pour up!"
+  "summary": "Barcode reads 3245995961018. Label quality looks solid — this one checks out. Pour up!"
 }
 If a field cannot be read, set it to null. Keep the summary short, punchy, and voiced by TCG.`,
 

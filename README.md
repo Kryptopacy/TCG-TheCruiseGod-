@@ -44,8 +44,10 @@ The ElevenLabs agent doesn't just reply — it **drives the interface**. Through
 | `showQR` | Displays the CruiseHQ QR code (dynamically generated via `api.qrserver.com`) |
 | `randomizeGroups` | Shuffles active guests into groups (supports auto, self-select, and smart mode sorting) |
 | `setGroupLeader` | Elects and announces a specific guest as the captain of their group |
-| `analyzeImage` | Opens camera for OCR/Vision (bill splitting, NAFDAC/barcode verification, drink checks, game vision) |
+| `analyzeImage` | Opens camera for OCR/Vision (bill splitting, barcode verification, drink checks, game vision) |
 | `captureScreen` | Instant screenshot memory with auto-generated caption |
+| `stopListening` | Mutes the mic at the hardware level; tap the TCG character or say "unmute" to resume |
+| `getAutoLocation` | Triggers device geolocation, prompting the user for permission if not yet granted |
 
 ### 🧠 Engineered System Prompt
 
@@ -70,44 +72,46 @@ Queries are context-aware. Asking for a "wild game for 6 people" generates `"for
 
 ### 👥 CruiseHQ — Multiplayer Rooms
 
-The host generates a 4-character room code. Guests visit `/room/{CODE}` on their phones and join via Supabase Realtime Presence.
+The host generates a 4-character room code. Guests scan a QR code and land in a **full two-way CruiseHQ interface** — the same one the host uses, with guest-appropriate controls.
 
-**Group System:** The host (or agent via `randomizeGroups` tool) can split guests into named groups. CruiseHQ provides tabbed chat with a **Main Room** and a tab per group — messages are scoped by group so private team discussions stay private.
+**Group System:** The host (or agent via `randomizeGroups` tool) can split guests into named groups. CruiseHQ provides tabbed chat with a **Main Room** and a tab per group — messages are scoped by group. The host manages group membership; guests can nominate, vote, or randomize a **Group Leader** (their elected group representative) directly from within their group tab.
 
-**In-Room Decision Tools:**
+**Guest Privileges:**
+- Full two-way chat in Main Room and their assigned Group tab
+- 🎲 Random Leader, 📊 Group Leader Poll, 🎯 Randomizer, 📥 Drop submissions
+- 🖼️ Push images to the host's full-screen overlay
+- 🎙️ Request Co-host (approved manually or by voice) — grants remote mic via SpeechRecognition, injected into the live agent session
 
-- 📊 **Polls** — Any participant can create a poll with custom options and optional anonymous voting. Votes aggregate in real-time across all connected clients via Supabase Broadcast.
-- 🎯 **Randomizer** — A slot-machine-style picker that auto-loads the active group members. Spin to pick a random person for a dare, a round, or any decision.
+**Host-only Controls:**
+- ⚙️ Groups Setup tab (create, clear, configure groups and assign members)
+- 📊 Broadcast Poll — host-initiated polls sent to the whole room
+
+**In-Room Tools for Everyone:**
+
+- 🎯 **Randomizer** — Slot-machine-style picker that auto-loads active group members
+- 📥 **Drop Submissions** — Truth, Dare, Charades, Suggestions; options for anonymous drops
 
 **Guest Actions from `/room/{CODE}`:**
 
 | Action | What Happens |
 |---|---|
-| 💬 Chat | Message appears in the host's CruiseHQ |
-| 🔥 Dare | Injected into the voice agent's context |
-| 🤫 Truth | Injected into the voice agent's context |
+| 💬 Chat | Real-time two-way message in Main or Group tab |
+| 🔥 Dare | Injected into the voice agent's live context |
+| 🤫 Truth | Injected into the voice agent's live context |
 | 🎵 Song | Song request queued to the host |
-| 🎭 Charades | Charades word sent to the host |
-| Tag **@TCG** | The AI responds directly to the guest |
-| 🎙️ Request Co-host | Host approves → guest gets a remote mic via SpeechRecognition |
+| 🎭 Charades | Hidden word sent to host — shows `[HIDDEN]` in transcript |
+| Tag **@TCG** | The AI responds directly to that guest |
+| 🎙️ Request Co-host | Host approves (manual or voice) → guest gets remote mic |
 | 📸 Save to Memories | Any chat message can be captured as a Trophy |
 
 The agent is aware of all guests in real-time. When someone joins or leaves, it acknowledges them by name.
-
-**Cruiser Roster Modal:** The host can tap the "👥 N Cruisers" badge to open a full-screen roster showing all connected guests with their group badges. Quick Action buttons let the host split guests 50/50, into 3 groups, or reset groups — all in one tap.
-
-**Push to Screen:** Guests can push images to the host's screen. The image appears as a dramatic full-screen overlay (with `zoom-out` dismiss) — perfect for sharing memes, photos, or evidence mid-conversation.
-
-**Co-host Voice Injection:** Approved co-hosts speak through their phone's browser SpeechRecognition API. Their transcribed speech is injected directly into the ElevenLabs session via `conversation.sendUserMessage()`, so TCG hears and responds to them naturally.
-
-**Charades Hidden Word:** When a guest submits a charades word, the host's transcript shows `[HIDDEN]` to prevent cheating — only the agent knows the word.
 
 ### 📸 Vision System
 
 Point your camera at anything and TCG analyzes it:
 
 - **Bill Scanner** — Reads receipt totals and extracts currency, splitting the bill globally
-- **Actionable Drink Checks** — OCR extracts barcodes (queried via Open Food Facts API) and NAFDAC numbers (verified via Firecrawl scrape) to confirm product authenticity
+- **Actionable Drink Checks** — OCR extracts barcodes (queried via Open Food Facts API) to confirm product authenticity
 - **Game Vision** — Identifies board/card game state and suggests next moves
 - **User-Directed Analysis** — Users can type custom instructions while snapping a photo to override the default task logic
 
@@ -175,7 +179,7 @@ A slide-up transcript drawer provides full text chat. Users can type messages (r
 
 External APIs:
   • ElevenLabs Conversational AI (voice + client tools)
-  • Firecrawl Search API (live web scraping + NAFDAC portal bypassing)
+  • Firecrawl Search API (live web scraping)
   • Gemini Vision API (image analysis)
   • Open Food Facts API (global barcode product lookup)
   • Google Maps Geocoding (reverse location lookup)
@@ -287,7 +291,7 @@ app/
 │   ├── lib/
 │   │   ├── firecrawl.ts       # 3-tier search pipeline
 │   │   └── db.ts              # Supabase/localStorage persistence
-│   ├── room/[id]/             # Guest join page
+│   ├── room/[id]/             # Full CruiseHQ guest session (two-way, isHost=false)
 │   ├── trophy-room/           # Memory gallery
 │   ├── profile/               # Wingman preferences
 │   ├── admin/                 # Demo/Production mode toggle
@@ -309,6 +313,5 @@ The Firecrawl integration goes far beyond a basic search wrapper:
 
 - **Dynamic Query Engine** — Translates conversational intent into structured search queries with contextual modifiers (energy level, urgency, player count)
 - **Selective Deep Scrape** — Game searches request `markdown` format to extract full rule sets for voice readback
-- **Verification Scraper** — The Vision API uses Firecrawl's `/v1/scrape` endpoint to bypass CORS and load NAFDAC portals, parsing raw Markdown back to authenticate scanned products
 - **3-Tier Cache** — Supabase (7-day) → Redis (15-min) → Firecrawl API. Aggressively mitigates rate limits and costs
 - **Background Persistence** — Fresh results are asynchronously saved to Supabase tables (`tcg_locations`, `tcg_games`, `tcg_plugs`) for future instant retrieval

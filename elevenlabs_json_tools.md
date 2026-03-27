@@ -436,7 +436,7 @@ Opens the camera for OCR/Vision — bill scanning, custom instructions, drink ch
 {
   "type": "client",
   "name": "analyzeImage",
-  "description": "Opens the device camera to capture and analyze an image with AI vision. Use for: splitting bills by scanning a receipt, verifying drinks/medicines by scanning barcodes or NAFDAC numbers, analyzing a board/card game state, answering a custom user question about their surroundings, or any general visual context.",
+  "description": "Opens the device camera to capture and analyze an image with AI vision. Use for: splitting bills by scanning a receipt, verifying drinks/medicines by scanning barcodes, analyzing a board/card game state, answering a custom user question about their surroundings, or any general visual context.",
   "disable_interruptions": false,
   "force_pre_tool_speech": "auto",
   "tool_call_sound": null,
@@ -451,7 +451,7 @@ Opens the camera for OCR/Vision — bill scanning, custom instructions, drink ch
       "id": "param_task",
       "type": "string",
       "value_type": "llm_prompt",
-      "description": "The analysis task. One of: 'bill_split' (scan receipt/extract totals), 'drink_check' (assess bottle/label/barcode authenticity, or NAFDAC verification), 'game_vision' (analyze game state), 'general'",
+      "description": "The analysis task. One of: 'bill_split' (scan receipt/extract totals), 'drink_check' (assess bottle/label/barcode authenticity), 'game_vision' (analyze game state), 'general'",
       "dynamic_variable": "",
       "constant_value": "",
       "enum": null,

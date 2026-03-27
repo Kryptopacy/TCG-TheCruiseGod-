@@ -463,7 +463,7 @@ Greet them with energy right now! Be warm, hype, and brief.`;
       addMessage('system', `💰 Detected total: ${structured.total}. ${structured.summary || ''}`);
     }
 
-    // ─── Actionable OCR: auto-verify barcode + NAFDAC in background ───────────
+    // ─── Actionable OCR: auto-verify barcode in background ────────────────────
     const ocr = structured?.ocr;
     if (!ocr) return;
 
@@ -486,27 +486,6 @@ Greet them with energy right now! Be warm, hype, and brief.`;
           }
         })
         .catch(() => addMessage('system', '⚠️ Barcode lookup failed.'));
-    }
-
-    // NAFDAC number verification via Firecrawl scrape
-    if (ocr.nafdac) {
-      addMessage('system', `🔎 Verifying NAFDAC number ${ocr.nafdac}…`);
-      fetch('/api/verify-nafdac', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nafdac: ocr.nafdac }),
-      })
-        .then(r => r.json())
-        .then((data) => {
-          if (data.found) {
-            addMessage('system', `🏛️ NAFDAC verified: ${data.summary}`);
-            safeInjectMessage(`[NAFDAC Verification] ${data.summary}`);
-          } else {
-            addMessage('system', `🚨 NAFDAC ${ocr.nafdac}: ${data.message || 'Not found in registry — may be unregistered or counterfeit.'}`);
-            safeInjectMessage(`[NAFDAC Verification] ${ocr.nafdac} not found in the NAFDAC registry. Treat with caution.`);
-          }
-        })
-        .catch(() => addMessage('system', '⚠️ NAFDAC verification failed.'));
     }
   }, [addMessage, safeInjectMessage]);
 
