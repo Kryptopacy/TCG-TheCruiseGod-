@@ -8,14 +8,20 @@ import GroupsPanel, { GroupState } from './GroupsPanel';
 export type { GroupState };
 
 // ─── Slot Machine Randomizer ────────────────────────────────────────────────
-function ChatRandomizer({ activeGroupMembers, onClose, onResult }: { activeGroupMembers: string[], onClose: () => void, onResult: (res: string) => void }) {
+function ChatRandomizer({
+  activeGroupMembers,
+  allGuests,
+  onClose,
+  onResult,
+}: {
+  activeGroupMembers: string[];
+  allGuests: string[];
+  onClose: () => void;
+  onResult: (res: string) => void;
+}) {
   const [options, setOptions] = useState<string>('');
   const [isSpinning, setIsSpinning] = useState(false);
   const [currentDisplay, setCurrentDisplay] = useState('?');
-
-  useEffect(() => {
-    if (activeGroupMembers.length > 0) setOptions(activeGroupMembers.join(', '));
-  }, [activeGroupMembers]);
 
   const handleSpin = () => {
     const list = options.split(',').map(s => s.trim()).filter(Boolean);
@@ -34,6 +40,14 @@ function ChatRandomizer({ activeGroupMembers, onClose, onResult }: { activeGroup
     }, 100);
   };
 
+  // Context-aware "Load ALL" — group members if in a group tab, all room guests if in main
+  const handleLoadAll = () => {
+    const pool = activeGroupMembers.length > 0 ? activeGroupMembers : allGuests;
+    if (pool.length > 0) setOptions(pool.join(', '));
+  };
+
+  const hasPool = activeGroupMembers.length > 0 || allGuests.length > 0;
+
   return (
     <div style={{ background: 'rgba(255,150,0,0.07)', padding: '16px', borderRadius: '16px', marginBottom: '12px', border: '1px solid rgba(255,150,0,0.25)' }}>
       <h4 style={{ margin: '0 0 12px 0', color: '#FF8C00', textAlign: 'center', fontFamily: 'var(--font-display)' }}>🎯 Room Randomizer</h4>
@@ -42,7 +56,24 @@ function ChatRandomizer({ activeGroupMembers, onClose, onResult }: { activeGroup
           {currentDisplay}
         </h2>
       </div>
-      <input value={options} onChange={e => setOptions(e.target.value)} placeholder="Comma separated options..." style={{ width: '100%', background: 'rgba(40,8,8,0.7)', border: '1px solid rgba(255,150,0,0.2)', color: '#fff', padding: '8px', borderRadius: '8px', marginBottom: '12px', outline: 'none', boxSizing: 'border-box' }} disabled={isSpinning} />
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+        <input
+          value={options}
+          onChange={e => setOptions(e.target.value)}
+          placeholder="Comma separated options..."
+          style={{ flex: 1, background: 'rgba(40,8,8,0.7)', border: '1px solid rgba(255,150,0,0.2)', color: '#fff', padding: '8px', borderRadius: '8px', outline: 'none', boxSizing: 'border-box' }}
+          disabled={isSpinning}
+        />
+        {hasPool && (
+          <button
+            onClick={handleLoadAll}
+            disabled={isSpinning}
+            style={{ background: 'rgba(0,229,255,0.12)', color: '#00E5FF', border: '1px solid rgba(0,229,255,0.3)', borderRadius: '8px', padding: '8px 12px', fontWeight: 800, fontSize: '0.75rem', cursor: isSpinning ? 'default' : 'pointer', whiteSpace: 'nowrap' }}
+          >
+            👥 ALL
+          </button>
+        )}
+      </div>
       <div style={{ display: 'flex', gap: '8px' }}>
         <button onClick={handleSpin} disabled={isSpinning} style={{ flex: 1, background: isSpinning ? 'rgba(255,150,0,0.3)' : 'linear-gradient(135deg, #FFE600, #FF8C00)', color: '#1a0000', border: 'none', padding: '12px', borderRadius: '8px', fontWeight: 900, cursor: isSpinning ? 'default' : 'pointer', letterSpacing: '1px' }}>
           {isSpinning ? 'SPINNING...' : 'SPIN 🎰'}
@@ -56,23 +87,74 @@ function ChatRandomizer({ activeGroupMembers, onClose, onResult }: { activeGroup
 // ─── Poll Creator ──────────────────────────────────────────────────────────
 function PollCreator({ onClose, onSubmit }: { onClose: () => void, onSubmit: (q: string, opts: string[], anon: boolean) => void }) {
   const [question, setQuestion] = useState('');
-  const [opt1, setOpt1] = useState('');
-  const [opt2, setOpt2] = useState('');
+  const [options, setOptions] = useState<string[]>(['', '']);
   const [anon, setAnon] = useState(false);
 
-  const inputStyle: React.CSSProperties = { width: '100%', background: 'rgba(40,8,8,0.7)', border: '1px solid rgba(255,150,0,0.2)', color: '#fff', padding: '8px 12px', borderRadius: '8px', marginBottom: '8px', outline: 'none', boxSizing: 'border-box' };
+  const inputStyle: React.CSSProperties = {
+    width: '100%', background: 'rgba(40,8,8,0.7)', border: '1px solid rgba(255,150,0,0.2)',
+    color: '#fff', padding: '8px 12px', borderRadius: '8px', marginBottom: '8px',
+    outline: 'none', boxSizing: 'border-box',
+  };
+
+  const updateOption = (i: number, val: string) => {
+    setOptions(prev => prev.map((o, idx) => idx === i ? val : o));
+  };
+
+  const addOption = () => {
+    if (options.length < 10) setOptions(prev => [...prev, '']);
+  };
+
+  const removeOption = (i: number) => {
+    if (options.length <= 2) return;
+    setOptions(prev => prev.filter((_, idx) => idx !== i));
+  };
+
+  const canSubmit = question.trim() && options.every(o => o.trim());
 
   return (
     <div style={{ background: 'rgba(255,100,0,0.07)', padding: '16px', borderRadius: '16px', marginBottom: '12px', border: '1px solid rgba(255,100,0,0.25)' }}>
       <h4 style={{ margin: '0 0 8px 0', color: '#FF8C00', fontFamily: 'var(--font-display)' }}>📊 Create Poll</h4>
       <input placeholder="Question?" value={question} onChange={e => setQuestion(e.target.value)} style={inputStyle} />
-      <input placeholder="Option 1" value={opt1} onChange={e => setOpt1(e.target.value)} style={inputStyle} />
-      <input placeholder="Option 2" value={opt2} onChange={e => setOpt2(e.target.value)} style={inputStyle} />
+
+      {options.map((opt, i) => (
+        <div key={i} style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '8px' }}>
+          <input
+            placeholder={`Option ${i + 1}`}
+            value={opt}
+            onChange={e => updateOption(i, e.target.value)}
+            style={{ ...inputStyle, marginBottom: 0, flex: 1 }}
+          />
+          {options.length > 2 && (
+            <button
+              onClick={() => removeOption(i)}
+              style={{ background: 'rgba(255,60,60,0.15)', border: '1px solid rgba(255,60,60,0.3)', color: '#ff7070', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', fontWeight: 900, fontSize: '0.8rem', flexShrink: 0, minWidth: 'unset', minHeight: 'unset' }}
+            >
+              ×
+            </button>
+          )}
+        </div>
+      ))}
+
+      {options.length < 10 && (
+        <button
+          onClick={addOption}
+          style={{ width: '100%', background: 'rgba(255,150,0,0.08)', border: '1px dashed rgba(255,150,0,0.3)', color: 'rgba(255,150,0,0.7)', borderRadius: '8px', padding: '7px', cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem', marginBottom: '10px' }}
+        >
+          + Add Option
+        </button>
+      )}
+
       <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: 'rgba(255,255,255,0.6)', marginBottom: '12px' }}>
         <input type="checkbox" checked={anon} onChange={e => setAnon(e.target.checked)} /> Anonymous Voting
       </label>
       <div style={{ display: 'flex', gap: '8px' }}>
-        <button onClick={() => { if (question && opt1 && opt2) onSubmit(question, [opt1, opt2], anon); }} style={{ flex: 1, background: 'linear-gradient(135deg, #FF8C00, #CC1010)', color: '#fff', border: 'none', padding: '8px', borderRadius: '8px', fontWeight: 800, cursor: 'pointer' }}>POST POLL</button>
+        <button
+          onClick={() => { if (canSubmit) onSubmit(question, options.map(o => o.trim()), anon); }}
+          disabled={!canSubmit}
+          style={{ flex: 1, background: canSubmit ? 'linear-gradient(135deg, #FF8C00, #CC1010)' : 'rgba(255,150,0,0.2)', color: '#fff', border: 'none', padding: '8px', borderRadius: '8px', fontWeight: 800, cursor: canSubmit ? 'pointer' : 'default', opacity: canSubmit ? 1 : 0.6 }}
+        >
+          POST POLL
+        </button>
         <button onClick={onClose} style={{ background: 'transparent', color: 'rgba(255,255,255,0.5)', border: 'none', cursor: 'pointer', padding: '0 8px' }}>Cancel</button>
       </div>
     </div>
@@ -178,35 +260,38 @@ export default function CruiseHQ({
     .filter(([_, state]) => currentUser === 'Host' || state.members.includes(currentUser))
     .map(([name]) => name);
 
+  // ── Single unified Supabase channel with one handler ──────────────────────
   useEffect(() => {
     if (!roomId) return;
     const channel = supabase.channel(`room:${roomId}`, { config: { broadcast: { self: true } } });
-    channel.on('broadcast', { event: 'room_chat' }, ({ payload }) => {
-      setMessages(prev => [...prev, payload]);
-    }).subscribe();
+    channel
+      .on('broadcast', { event: 'room_chat' }, ({ payload }) => {
+        if (payload.type === 'vote') {
+          // Handle vote updates in-place
+          setMessages(prev => prev.map(m => {
+            if (m.id === payload.msgId && m.poll) {
+              return { ...m, poll: { ...m.poll, votes: { ...m.poll.votes, [payload.voter]: payload.option } } };
+            }
+            return m;
+          }));
+        } else {
+          // Normal chat message — add to list
+          setMessages(prev => {
+            // De-duplicate: if we already have this id (optimistic append), skip
+            if (prev.some(m => m.id === payload.id)) return prev;
+            return [...prev, payload];
+          });
+        }
+      })
+      .subscribe();
     channelRef.current = channel;
     return () => { supabase.removeChannel(channel); };
   }, [roomId]);
 
+  // Auto-scroll to bottom on new messages or tab switch
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, activeTab]);
-
-  // Vote handler for polls
-  useEffect(() => {
-    if (!channelRef.current) return;
-    const sub = channelRef.current.on('broadcast', { event: 'room_chat' }, ({ payload }: any) => {
-      if (payload.type === 'vote') {
-        setMessages(prev => prev.map(m => {
-          if (m.id === payload.msgId && m.poll) {
-            return { ...m, poll: { ...m.poll, votes: { ...m.poll.votes, [payload.voter]: payload.option } } };
-          }
-          return m;
-        }));
-      }
-    });
-    return () => { sub.unsubscribe(); };
-  }, []);
 
   const sendMessage = async (payload: Partial<ChatMessage>) => {
     if (!channelRef.current) return;
@@ -215,8 +300,10 @@ export default function CruiseHQ({
       sender: currentUser,
       groupId: activeTab,
       timestamp: Date.now(),
-      ...payload
+      ...payload,
     };
+    // Optimistic append so message shows immediately (broadcast echo de-duplicates)
+    setMessages(prev => [...prev, msg]);
     await channelRef.current.send({ type: 'broadcast', event: 'room_chat', payload: msg });
   };
 
@@ -224,14 +311,13 @@ export default function CruiseHQ({
     if (!channelRef.current) return;
     await channelRef.current.send({
       type: 'broadcast', event: 'room_chat',
-      payload: { type: 'vote', msgId, voter: currentUser, option }
+      payload: { type: 'vote', msgId, voter: currentUser, option },
     });
   };
 
   const handleStartLeaderPoll = (groupName: string) => {
     const state = groups[groupName];
     if (!state || state.members.length < 2) return;
-    // Move to that group's tab and launch a poll
     setActiveTab(groupName);
     const currentLeader = state.leader;
     const candidates = state.members.filter(m => m !== currentLeader);
@@ -251,11 +337,15 @@ export default function CruiseHQ({
   if (!isOpen) return null;
 
   const currentMessages = messages.filter(m => m.groupId === activeTab);
+  // For the randomizer: group members if in a group tab, empty if in main
+  const activeGroupMembers = (activeTab !== 'main' && activeTab !== 'groups' && groups[activeTab])
+    ? groups[activeTab].members
+    : [];
 
   return (
     <div style={{
       position: 'fixed', inset: 0,
-      // z-index 120 — below TCG character (z-150) so TCG always floats above ─ key UX requirement
+      // z-index 120 — below TCG character (z-150) so TCG always floats above
       zIndex: 120,
       background: 'linear-gradient(180deg, rgba(20,3,3,0.99) 0%, rgba(14,2,2,0.99) 100%)',
       backdropFilter: 'blur(20px)',
@@ -274,8 +364,22 @@ export default function CruiseHQ({
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.5px',
           }}>🚢 CruiseHQ</h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {/* Hint that TCG character is still reachable above */}
             <span style={{ fontSize: '0.62rem', color: 'rgba(255,200,80,0.4)', fontWeight: 700 }}>TCG active ↑</span>
+            {/* 📸 Capture button — saves a memory from the current room/group view */}
+            {onSaveMemory && (
+              <button
+                onClick={() => onSaveMemory(`${activeTab === 'main' ? 'Main Room' : activeTab} capture`)}
+                title="Save memory from this chat"
+                style={{
+                  background: 'rgba(255,200,0,0.1)', border: '1px solid rgba(255,200,0,0.25)',
+                  color: 'rgba(255,200,80,0.7)', padding: '6px 10px', borderRadius: '20px',
+                  cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem',
+                  display: 'flex', alignItems: 'center', gap: '4px',
+                }}
+              >
+                📸
+              </button>
+            )}
             <button
               onClick={onClose}
               style={{ background: 'rgba(255,200,0,0.12)', border: '1px solid rgba(255,200,0,0.3)', color: '#FFE600', padding: '8px 16px', borderRadius: '20px', cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem' }}
@@ -342,7 +446,7 @@ export default function CruiseHQ({
 
       {/* ── Content Area ── */}
       {activeTab === 'groups' ? (
-        /* Groups Management Panel — rendered inline, not a modal, so TCG floats above naturally */
+        /* Groups Management Panel */
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px' }}>
           <GroupsPanel
             activeGuests={activeGuests}
@@ -467,7 +571,8 @@ export default function CruiseHQ({
             {showRandomizerUI && (
               <div style={{ paddingTop: '12px' }}>
                 <ChatRandomizer
-                  activeGroupMembers={activeTab === 'main' ? [] : groups[activeTab]?.members || []}
+                  activeGroupMembers={activeGroupMembers}
+                  allGuests={activeGuests}
                   onClose={() => setShowRandomizerUI(false)}
                   onResult={(res) => { sendMessage({ text: `🎲 Randomizer chose: ${res}!`, highlight: true }); setShowRandomizerUI(false); }}
                 />
@@ -481,7 +586,7 @@ export default function CruiseHQ({
                     sendMessage({
                       text: `📥 **${type.toUpperCase()} DROP!**\n\n"${content}"`,
                       highlight: true,
-                      sender: anon ? 'Anonymous Cruiser' : currentUser
+                      sender: anon ? 'Anonymous Cruiser' : currentUser,
                     });
                     setShowDropUI(false);
                   }}
@@ -509,7 +614,7 @@ export default function CruiseHQ({
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => {
-                  if (e.key === 'Enter') {
+                  if (e.key === 'Enter' && input.trim()) {
                     sendMessage({ text: input, ...(replyTarget ? { replyTo: replyTarget } : {}) });
                     setInput('');
                     setReplyTarget(null);

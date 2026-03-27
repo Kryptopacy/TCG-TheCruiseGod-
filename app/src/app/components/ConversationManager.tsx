@@ -678,6 +678,97 @@ Greet them with energy right now! Be warm, hype, and brief.`;
     handleCreateGroups(numGroups, 'auto');
   }, [handleCreateGroups]);
 
+  // ─── CruiseHQ close: re-inject context so TCG stays oriented ───────────────
+  useEffect(() => {
+    if (!showCruiseHQ) {
+      safeInjectMessage(`[SYSTEM] User returned to the main screen from CruiseHQ.`);
+    }
+  // Only fire on showCruiseHQ transitions, not on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showCruiseHQ]);
+
+  // ─── Search Results Panel ────────────────────────────────────────────────────
+  function SearchResultsPanel() {
+    if (!currentResults || !currentResults.results || currentResults.results.length === 0) return null;
+    const typeIcon = currentResults.type === 'locations' ? '📍' : currentResults.type === 'plugs' ? '🔌' : '🎮';
+    return (
+      <div style={{
+        position: 'fixed', bottom: '90px', left: '12px', right: '12px',
+        zIndex: 90, maxHeight: '55vh', display: 'flex', flexDirection: 'column',
+        background: 'linear-gradient(180deg, rgba(16,4,32,0.98) 0%, rgba(12,2,22,0.98) 100%)',
+        backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+        border: '1.5px solid rgba(245,200,0,0.3)',
+        borderRadius: '22px', boxShadow: '0 8px 40px rgba(0,0,0,0.7)',
+        overflow: 'hidden',
+      }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid rgba(245,200,0,0.12)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.75rem', fontWeight: 900, background: 'linear-gradient(90deg,#FFE600,#FF8C00)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              {typeIcon} {currentResults.count ?? currentResults.results.length} Result{currentResults.results.length !== 1 ? 's' : ''}
+            </span>
+            {currentResults.query && <span style={{ fontSize: '0.65rem', color: 'rgba(255,200,80,0.4)', fontWeight: 600 }}>"{currentResults.query}"</span>}
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button
+              onClick={() => {
+                setShowTranscript(true);
+                const summary = currentResults.results.slice(0, 5)
+                  .map((r, i) => `${i + 1}. **${r.title || r.name || ''}** — ${r.description || ''}`)
+                  .join('\n');
+                addMessage('agent', `🔍 Here are the results for "${currentResults.query || 'your search'}":\n\n${summary}`);
+              }}
+              style={{ background: 'rgba(245,200,0,0.1)', border: '1px solid rgba(245,200,0,0.3)', color: '#F5C800', padding: '5px 12px', borderRadius: '14px', fontWeight: 800, fontSize: '0.68rem', cursor: 'pointer', minWidth: 'unset', minHeight: 'unset' }}
+            >
+              View in Chat
+            </button>
+            <button
+              onClick={() => setCurrentResults(null)}
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.5)', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 900, minWidth: 'unset', minHeight: 'unset' }}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+        {/* Results list */}
+        <div style={{ overflowY: 'auto', padding: '8px 12px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {currentResults.results.map((result, i) => {
+            const label = result.title || result.name || `Result ${i + 1}`;
+            const sub = result.description || '';
+            return (
+              <button
+                key={i}
+                onClick={() => {
+                  safeInjectMessage(`[User selected result] ${label}: ${sub}. Acknowledge this choice and offer next steps.`);
+                  setCurrentResults(null);
+                }}
+                style={{
+                  background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,200,0,0.12)',
+                  borderRadius: '14px', padding: '10px 14px', cursor: 'pointer', textAlign: 'left',
+                  transition: 'all 0.15s ease', display: 'flex', alignItems: 'center', gap: '12px',
+                  width: '100%', minWidth: 'unset', minHeight: 'unset',
+                }}
+                onPointerEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(245,200,0,0.08)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(245,200,0,0.3)'; }}
+                onPointerLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,200,0,0.12)'; }}
+              >
+                <span style={{ fontSize: '1.3rem', flexShrink: 0 }}>{typeIcon}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ color: '#FFE600', fontWeight: 800, fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
+                  {sub && (
+                    <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.72rem', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {sub}
+                    </div>
+                  )}
+                </div>
+                <span style={{ color: 'rgba(245,200,0,0.4)', fontSize: '0.75rem', flexShrink: 0, fontWeight: 700 }}>Pick →</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div id="tcg-capture-area" className="page-container">
 
@@ -738,6 +829,9 @@ Greet them with energy right now! Be warm, hype, and brief.`;
           </div>
         </div>
       </div>
+
+      {/* Search Results Panel — shown whenever TCG returns search data */}
+      <SearchResultsPanel />
 
       {/* Tools Panel Overlay (shown when Tools mode is active) */}
       {activeMode === 'tools' && (
@@ -835,8 +929,9 @@ Greet them with energy right now! Be warm, hype, and brief.`;
             transform: showCruiseHQ 
               ? `scale(${conversation.isSpeaking ? 1.05 : 1})`
               : (showTranscript || activeMode !== 'tools' ? `translateX(-50%) scale(${conversation.isSpeaking ? 1.05 : 1})` : `scale(${conversation.isSpeaking ? 1.05 : 1})`),
-            zIndex: 150, /* always above overlays so conversation is uninterrupted */
-            width: showCruiseHQ ? '75px' : (showTranscript ? '140px' : (activeMode === 'tools' ? '90px' : 'min(85vw, 420px)')),
+            zIndex: 150,
+            /* Slightly larger in widget modes for legibility */
+            width: showCruiseHQ ? '95px' : (showTranscript ? '140px' : (activeMode === 'tools' ? '95px' : 'min(85vw, 420px)')),
             transition: 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
             animation: conversation.isSpeaking ? 'speaking-bounce 1s infinite ease-in-out' : 'idle-float 5s infinite ease-in-out',
             filter: conversation.isSpeaking
@@ -846,37 +941,46 @@ Greet them with energy right now! Be warm, hype, and brief.`;
                 : 'drop-shadow(0 -5px 15px rgba(0,0,0,0.3))',
           }}
         >
+          {/* Character — always clickable: toggle connect/disconnect (or unmute if muted) */}
           <img
             src="/tcg-character.png"
             alt="The Cruise God"
+            title={conversation.status === 'connected' ? (isMicMuted ? 'Tap to unmute' : 'Tap to disconnect TCG') : 'Tap to connect TCG'}
             onClick={() => {
-              if (isMicMuted) toggleMicMute();
+              if (isMicMuted) {
+                toggleMicMute();
+              } else {
+                toggleConversation();
+              }
             }}
             style={{ 
               width: '100%', 
               height: 'auto', 
               display: 'block', 
-              pointerEvents: isMicMuted ? 'auto' : 'none',
-              cursor: isMicMuted ? 'pointer' : 'default'
+              pointerEvents: 'auto',
+              cursor: 'pointer',
+              userSelect: 'none',
             }}
           />
-          {/* Vision eye hotspot — overlaid on visor area */}
+          {/* Vision eye hotspot — overlaid on visor area. Compact in widget modes. */}
           {isStarted && (
             <button
               onClick={() => { setCameraTask('general'); setCameraPrompt(undefined); setShowCamera(true); }}
               aria-label="Open TCG Vision"
               style={{
                 position: 'absolute',
-                top: (showCruiseHQ) ? '18%' : (showTranscript ? '22%' : (activeMode === 'tools' ? '18%' : '28%')),
+                /* In widget modes (HQ/transcript/tools), sit at the chin not the torso */
+                top: (showCruiseHQ || showTranscript || activeMode === 'tools') ? '72%' : '28%',
                 left: '50%',
                 transform: 'translateX(-50%)',
                 background: 'rgba(18, 4, 32, 0.9)',
                 border: '1.5px solid rgba(245,200,0,0.8)',
                 borderRadius: '99px',
-                padding: '5px 12px',
+                /* Smaller padding in widget modes so it doesn't cover the whole widget */
+                padding: (showCruiseHQ || showTranscript || activeMode === 'tools') ? '3px 7px' : '5px 12px',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '5px',
+                gap: '3px',
                 cursor: 'pointer',
                 backdropFilter: 'blur(6px)',
                 animation: 'eye-glow-pulse 2.5s ease-in-out infinite',
@@ -885,10 +989,12 @@ Greet them with energy right now! Be warm, hype, and brief.`;
                 zIndex: 10,
               }}
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="#FFFFFF">
+              <svg width={(showCruiseHQ || showTranscript || activeMode === 'tools') ? '9' : '13'} height={(showCruiseHQ || showTranscript || activeMode === 'tools') ? '9' : '13'} viewBox="0 0 24 24" fill="#FFFFFF">
                 <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
               </svg>
-              <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#FFFFFF', letterSpacing: '0.05em', textTransform: 'uppercase' }}>VISION</span>
+              {!(showCruiseHQ || showTranscript || activeMode === 'tools') && (
+                <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#FFFFFF', letterSpacing: '0.05em', textTransform: 'uppercase' }}>VISION</span>
+              )}
             </button>
           )}
         </div>
@@ -966,20 +1072,7 @@ Greet them with energy right now! Be warm, hype, and brief.`;
       {/* ── Side Action Buttons (right edge) ── */}
       {isStarted && (
         <div style={{ position: 'fixed', right: '14px', bottom: '50%', transform: 'translateY(50%)', zIndex: 60, display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center' }}>
-          {/* Memory capture */}
-          <button
-            onClick={() => handleCreateMemory({ type: 'moment', title: 'Captured Memory', content: 'Manually saved.' })}
-            aria-label="Capture Memory"
-            style={{ width: 56, height: 56, borderRadius: '16px', background: 'rgba(18, 4, 32, 0.95)', border: '1px solid rgba(255,255,255,0.15)', color: '#FFFFFF', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', gap: 4, backdropFilter: 'blur(16px)', transition: 'transform 0.12s ease', minWidth: 'unset', minHeight: 'unset', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
-            onPointerDown={(e) => e.currentTarget.style.transform = 'scale(0.9)'}
-            onPointerUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
-            onPointerLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M20 5h-3.17L15 3H9L7.17 5H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-8 13c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
-            <span style={{ fontSize: '0.55rem', fontWeight: 800, fontFamily: 'var(--font-russo), sans-serif', letterSpacing: '0.04em', textTransform: 'uppercase' }}>SAVE</span>
-          </button>
-          
-          {/* Tools — moved from mode pill to side stack */}
+          {/* Tools — open the party tools panel */}
           <button
             onClick={() => {
               setActiveMode('tools');

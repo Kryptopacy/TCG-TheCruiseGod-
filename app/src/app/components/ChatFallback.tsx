@@ -74,7 +74,7 @@ export default function ChatFallback({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, height: 0 }}>
 
       {/* Drawer header */}
       <div style={{

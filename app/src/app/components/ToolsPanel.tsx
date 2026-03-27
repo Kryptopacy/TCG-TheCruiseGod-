@@ -261,7 +261,7 @@ function Randomizer({ activeGuests = [], groups = {} }: { activeGuests?: string[
               onClick={() => setItems([...activeGuests])}
               style={{ flex: 1, background: 'rgba(0,229,255,0.12)', color: 'var(--accent-cyan, #00e5ff)', border: '1px solid rgba(0,229,255,0.3)', borderRadius: '12px', padding: '8px 12px', fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer' }}
             >
-              👥 Load Cruisers
+              👥 ALL Room Members
             </button>
           )}
           {Object.keys(groups).length > 0 && (
@@ -269,7 +269,7 @@ function Randomizer({ activeGuests = [], groups = {} }: { activeGuests?: string[
               onClick={() => setItems(Object.keys(groups))}
               style={{ flex: 1, background: 'rgba(224,64,251,0.12)', color: '#e040fb', border: '1px solid rgba(224,64,251,0.3)', borderRadius: '12px', padding: '8px 12px', fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer' }}
             >
-              🎲 Load Groups
+              🎲 ALL Group Names
             </button>
           )}
         </div>

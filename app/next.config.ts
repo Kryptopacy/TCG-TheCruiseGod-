@@ -3,7 +3,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  // Use alternate build dir for local dev to prevent Windows file-lock crashes
+  // Dev uses .next-dev so the local dev server doesn't conflict with production builds.
+  // Production (incl. Vercel) uses the standard .next output directory.
   distDir: process.env.NODE_ENV === 'development' ? '.next-dev' : '.next',
   // Prevents Windows heap crash during build trace collection on large projects
   outputFileTracingExcludes: {
