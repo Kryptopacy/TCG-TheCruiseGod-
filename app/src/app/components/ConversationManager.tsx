@@ -759,6 +759,13 @@ Greet them with energy right now! Be warm, hype, and brief.`;
                       {sub}
                     </div>
                   )}
+                  {(result.rating || result.priceLevel || result.address) && (
+                    <div style={{ display: 'flex', gap: '6px', marginTop: '4px', alignItems: 'center', flexWrap: 'nowrap', overflow: 'hidden' }}>
+                      {result.rating && <span style={{ flexShrink: 0, fontSize: '0.65rem', background: 'rgba(255,200,0,0.15)', color: '#FFE600', padding: '1px 5px', borderRadius: '4px', fontWeight: 700 }}>★ {result.rating}</span>}
+                      {result.priceLevel && <span style={{ flexShrink: 0, fontSize: '0.65rem', color: 'rgba(255,255,255,0.6)', fontWeight: 600 }}>{result.priceLevel}</span>}
+                      {result.address && <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>📍 {result.address.split(',')[0]}</span>}
+                    </div>
+                  )}
                 </div>
                 <span style={{ color: 'rgba(245,200,0,0.4)', fontSize: '0.75rem', flexShrink: 0, fontWeight: 700 }}>Pick →</span>
               </button>

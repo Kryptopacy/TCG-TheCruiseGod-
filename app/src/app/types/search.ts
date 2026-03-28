@@ -18,6 +18,9 @@ export interface SearchResult {
   description: string;
   name?: string;
   rules_content?: string;
+  address?: string;
+  rating?: number;
+  priceLevel?: string;
 }
 
 export interface UnifiedSearchResponse {

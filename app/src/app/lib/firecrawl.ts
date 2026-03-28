@@ -161,6 +161,10 @@ export async function performFirecrawlSearch(req: SearchRequest): Promise<Unifie
     return { ...cached, from_cache: true };
   }
 
+  if (type === 'locations') {
+    return handleGooglePlacesSearch(req, searchQuery, locationKey, queryKey, cacheKey);
+  }
+
   const apiKey = process.env.FIRECRAWL_API_KEY;
 
   if (!apiKey) {
@@ -279,3 +283,119 @@ export async function performFirecrawlSearch(req: SearchRequest): Promise<Unifie
     return { success: false, query, type, results: [], error: 'Something went wrong on my end.' };
   }
 }
+
+async function handleGooglePlacesSearch(req: SearchRequest, searchQuery: string, locationKey: string | null, queryKey: string, cacheKey: string): Promise<UnifiedSearchResponse> {
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
+  if (!apiKey) {
+    return { success: false, query: req.query, type: 'locations', results: [], error: 'Google Maps API key not configured' };
+  }
+
+  const isCoordinates = req.location && /^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(req.location);
+  
+  const payload: any = {
+    textQuery: isCoordinates ? req.query : `${req.query} in ${req.location || ''}`.trim(),
+    maxResultCount: Math.min(req.limit || 5, 10),
+  };
+
+  if (isCoordinates) {
+    const [lat, lng] = req.location!.split(',').map(s => parseFloat(s.trim()));
+    payload.locationBias = {
+      circle: {
+        center: { latitude: lat, longitude: lng },
+        radius: 5000.0 // 5km
+      }
+    };
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+  try {
+    const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.rating,places.priceLevel,places.websiteUri,places.editorialSummary'
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      console.error('[Google Places Error]', await response.text());
+      return { success: false, query: req.query, type: 'locations', results: [], error: 'Location search failed.' };
+    }
+
+    const data = await response.json();
+    
+    if (!data.places || data.places.length === 0) {
+      return {
+        success: true,
+        results: [],
+        empty: true,
+        suggestion: `Couldn't find any places matching "${req.query}"${req.location ? ` near ${req.location}` : ''}.`,
+        query: searchQuery,
+        type: 'locations',
+      };
+    }
+
+    const results: SearchResult[] = data.places.map((place: any, index: number) => {
+      let desc = place.editorialSummary?.text || '';
+      if (!desc) {
+         desc = `${place.rating ? `Rating: ${place.rating}/5. ` : ''}${place.priceLevel ? `Price: ${place.priceLevel}. ` : ''}`;
+      }
+      return {
+        position: index + 1,
+        title: place.displayName?.text || 'Unknown Place',
+        url: place.websiteUri || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.displayName?.text || req.query)}`,
+        description: desc.trim() || place.formattedAddress || '',
+        address: place.formattedAddress,
+        rating: place.rating,
+        priceLevel: place.priceLevel,
+      };
+    });
+
+    const finalResponse: UnifiedSearchResponse = {
+      success: true,
+      results,
+      count: results.length,
+      type: 'locations',
+      query: searchQuery,
+    };
+
+    // Store in Redis cache
+    await redis.setex(cacheKey, CACHE_TTL_SECONDS, finalResponse);
+
+    // Store in DB in background
+    (async () => {
+      try {
+        const insertData = results.map(r => ({
+          query_key: queryKey,
+          location_key: locationKey,
+          title: r.title,
+          description: r.description,
+          url: r.url
+        }));
+        if (insertData.length > 0) {
+          await supabase.from('tcg_locations').upsert(insertData, {
+            onConflict: 'query_key,location_key,title',
+            ignoreDuplicates: true,
+          });
+        }
+      } catch (err) {
+        console.error('[DB Insert Catch Error]:', err);
+      }
+    })();
+
+    return finalResponse;
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+       return { success: true, results: [], partial: true, suggestion: 'Search took too long.', query: searchQuery, type: 'locations' };
+    }
+    return { success: false, query: req.query, type: 'locations', results: [], error: 'Location search failed.' };
+  }
+}
+
